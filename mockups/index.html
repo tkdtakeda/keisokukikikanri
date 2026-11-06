@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>レイアウト案一覧｜測定機器台帳</title>
+<link rel="stylesheet" href="common/mock-tokens.css">
+<style>
+  body { margin: 0; padding: 24px; background: var(--color-bg); color: var(--color-text); font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: var(--color-text-sub); margin: 0 0 16px; }
+  ul { list-style: none; padding: 0; display: grid; gap: 8px; max-width: 760px; }
+  a { display: block; padding: 12px 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-l); color: inherit; text-decoration: none; }
+  a:hover { border-color: var(--color-primary); }
+  a b { color: var(--color-primary); }
+  a span { display: block; color: var(--color-text-sub); font-size: 12.5px; margin-top: 2px; }
+  .adopted { border-color: var(--color-primary); box-shadow: inset 4px 0 0 var(--color-primary); }
+</style>
+</head>
+<body>
+  <h1>測定機器台帳 レイアウト案（5 案）</h1>
+  <p>静的なモック（データは固定）。各案の評価は 評価.md を参照。</p>
+  <ul>
+    <li><a href="a-tree-table.html"><b>案A 一枚表</b>（73 点）<span>全件を 1 枚のツリー表で一望。親子は行の展開。</span></a></li>
+    <li><a class="adopted" href="b-location-nav.html"><b>案B 設置先ナビ</b>（84 点・採用）<span>部 › 課 › ライン の木から辿り、その場所の機器を表で見る。</span></a></li>
+    <li><a href="c-master-detail.html"><b>案C 一覧＋詳細</b>（73 点）<span>一覧と詳細を常に並べ、1 台ずつ確かめる。</span></a></li>
+    <li><a href="d-due-first.html"><b>案D 期限主導</b>（79 点）<span>状態の件数を先に見せ、次にやることを 1 つ指す。</span></a></li>
+    <li><a href="e-search-first.html"><b>案E 検索ファースト</b>（67 点）<span>大きな検索欄で、番号から即座に探す。</span></a></li>
+  </ul>
+</body>
+</html>

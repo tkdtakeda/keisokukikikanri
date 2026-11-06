@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja" data-density="standard">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案D 期限主導｜測定機器台帳 レイアウト案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="common/mock-tokens.css">
+<link rel="stylesheet" href="common/mock-base.css">
+<style>
+  .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-3); background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+  .tile { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-l); background: var(--color-surface); cursor: pointer; text-align: left; }
+  .tile:hover { border-color: var(--color-primary-line); }
+  .tile[aria-pressed="true"] { border-color: var(--color-primary); box-shadow: inset 0 0 0 1px var(--color-primary); background: var(--color-primary-soft); }
+  .tile i { font-size: 18px; }
+  .tile b { font-size: var(--font-size-hero); line-height: 1; font-variant-numeric: tabular-nums; }
+  .tile span { display: block; font-size: var(--font-size-small); color: var(--color-text-sub); }
+  .tile--danger i { color: var(--color-danger); } .tile--warn i { color: var(--color-warn); } .tile--ok i { color: var(--color-ok); } .tile--muted i { color: var(--color-text-sub); }
+</style>
+</head>
+<body>
+<!-- 仮説：管理者が毎回まず知りたいのは「期限が来ているのはどれか」。件数を先に見せ、次にやることを 1 つだけ指す。 -->
+<div class="app">
+  <header class="topbar">
+    <div class="topbar__title"><i class="fa-solid fa-ruler-combined"></i>測定機器台帳</div>
+    <label class="search"><i class="fa-solid fa-magnifying-glass"></i><input class="input" placeholder="番号・型式で探す"></label>
+    <button class="btn" data-open-register><i class="fa-solid fa-plus"></i>登録</button>
+    <div class="topbar__spacer"></div>
+    <span class="topbar__mock">案D 期限主導</span>
+    <button class="btn btn--primary" id="cta"></button>
+  </header>
+  <nav class="rail" id="rail"></nav>
+  <aside class="sidepanel" id="panel"><div class="sidepanel__inner"></div></aside>
+  <main class="main" style="flex-direction:row">
+    <div class="main" style="flex:1">
+      <div class="tiles" id="tiles"></div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>状態</th><th>番号</th><th>分類</th><th>型式・仕様</th><th>製造番号</th><th>前回校正</th><th>次回期限</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <aside class="drawer" id="drawer"></aside>
+  </main>
+</div>
+<div class="mock-note">レイアウト案のモック（データは固定）。上の件数をクリックで絞り込み。設置先ごとにまとめて表示。</div>
+
+<script src="common/mock-data.js"></script>
+<script src="common/mock-util.js"></script>
+<script>
+(function () {
+  'use strict';
+  const D = window.MockData, U = window.MockUtil;
+  let filter = 'all', selected = null;
+  const TILES = [
+    ['all', 'すべて', 'fa-layer-group', ''],
+    ['overdue', '期限切れ', 'fa-circle-exclamation', 'danger'],
+    ['soon', '30日以内', 'fa-clock', 'warn'],
+    ['ok', '有効', 'fa-circle-check', 'ok'],
+    ['stored', '保管中', 'fa-box-archive', 'muted']
+  ];
+
+  document.getElementById('rail').innerHTML = U.railHtml();
+  U.wireRail(document.getElementById('panel'), U.panelContents());
+  U.mountRegisterForm();
+
+  const active = () => D.assets.filter((a) => a.state !== '廃棄');
+
+  function render() {
+    const all = active(), c = U.counts(all);
+    document.getElementById('tiles').innerHTML = TILES.map(([k, l, ic, cls]) =>
+      `<button class="tile tile--${cls}" data-f="${k}" aria-pressed="${filter === k}"><i class="fa-solid ${ic}"></i><div><b>${k === 'all' ? all.length : c[k]}</b><span>${l}</span></div></button>`).join('');
+    const cta = document.getElementById('cta');
+    cta.innerHTML = c.overdue ? `<i class="fa-solid fa-circle-exclamation"></i>期限切れ ${c.overdue} 件を確認する`
+      : c.soon ? `<i class="fa-solid fa-clock"></i>30日以内 ${c.soon} 件を確認する` : '<i class="fa-solid fa-plus"></i>個体を登録する';
+
+    const list = all.filter((a) => filter === 'all' || U.status(a).key === filter)
+      .sort((a, b) => U.status(b).rank - U.status(a).rank || U.dueDate(a).localeCompare(U.dueDate(b)));
+    const groups = new Map();
+    list.forEach((a) => { const k = a.loc; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); });
+    document.getElementById('rows').innerHTML = list.length ? [...groups].map(([loc, items]) =>
+      `<tr class="group-row"><td colspan="7"><i class="fa-solid fa-location-dot"></i> ${U.esc(U.locPath(loc))}　<span class="sub">${items.length} 個体</span></td></tr>` +
+      items.map((a) => `<tr data-id="${a.id}" class="${a.id === selected ? 'is-selected' : ''}">
+        <td>${U.badge(U.status(a))}</td>
+        <td><b>${U.esc(U.identity(a))}</b>${a.parent ? ` <span class="sub">（${U.esc(U.identity(D.assets.find((p) => p.id === a.parent)))} の構成）</span>` : ''}</td>
+        <td>${U.kindHtml(a)} ${U.esc(U.cat(a).name)}</td><td>${U.esc(a.model)}</td>
+        <td class="mono">${U.esc(a.serial) || '<span class="sub">—</span>'}</td>
+        <td class="mono">${a.lastCal}</td><td class="mono">${U.dueDate(a)}</td></tr>`).join('')).join('')
+      : '<tr><td colspan="7" class="empty"><i class="fa-solid fa-circle-check"></i> 該当する機器はありません</td></tr>';
+  }
+
+  document.getElementById('tiles').addEventListener('click', (e) => { const t = e.target.closest('[data-f]'); if (t) { filter = t.dataset.f; render(); } });
+  document.getElementById('cta').addEventListener('click', () => { const c = U.counts(active()); filter = c.overdue ? 'overdue' : 'soon'; render(); });
+  document.getElementById('rows').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    selected = tr.dataset.id; render();
+    const dr = document.getElementById('drawer');
+    dr.innerHTML = U.detailHtml(D.assets.find((a) => a.id === selected), { closable: true });
+    dr.classList.add('is-open');
+  });
+  document.getElementById('drawer').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-detail]')) { document.getElementById('drawer').classList.remove('is-open'); selected = null; render(); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
