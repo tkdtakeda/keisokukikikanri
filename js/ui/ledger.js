@@ -21,9 +21,17 @@
     { id: 'lastCal', label: '前回校正', num: true, sortVal: (a) => R.calDate(a), cell: (a) => (R.calDate(a) ? `${R.calDate(a)}${R.isCalInherited(a) ? ' <span class="tag" title="親の校正日を引き継いでいます">親</span>' : ''}` : dash) },
     { id: 'interval', label: '周期', num: true, sortVal: (a) => R.interval(a), cell: (a) => `${R.interval(a)} か月` },
     { id: 'due', label: '次回期限', num: true, sortVal: (a) => R.dueDate(a) || '9999', cell: (a) => R.dueDate(a) || dash },
+    { id: 'standards', label: '使用標準器', max: 260,
+      sortVal: (a) => KK.trace.standardsOf(KK.trace.currentCalEvent(a)).map((s) => s.label).join('、'),
+      cell: (a) => {
+        const e = KK.trace.currentCalEvent(a); const list = KK.trace.standardsOf(e);
+        if (!list.length) return dash;
+        const bad = list.some((s) => s.asset && KK.trace.statusAsOf(s.asset, e.date).key === 'overdue');
+        return `${bad ? '<i class="fa-solid fa-triangle-exclamation" style="color:var(--color-danger)" title="校正時に期限切れの標準器を使用"></i> ' : ''}${esc(list.map((s) => s.asset ? R.identity(s.asset) : s.label).join('、'))}`;
+      } },
     { id: 'note', label: '備考', max: 240, sortVal: (a) => a.note, cell: (a) => esc(a.note) }
   ].forEach((c, i) => KK.columns.register({ ...c, order: i }));
-  KK.defaultHiddenColumns = ['mgmtNo', 'maker', 'interval', 'note'];
+  KK.defaultHiddenColumns = ['mgmtNo', 'maker', 'interval', 'standards', 'note'];
 
   let root = null;
   let rowOrder = []; // 表示中の行 ID（キーボード移動用）
@@ -127,7 +135,8 @@
     const tops = sortList(view.tops, view.today);
     const head = cols.map((c) => {
       const sorted = st.sort.key === c.id;
-      return `<th class="${c.num ? 'num' : ''}"><button class="th-sort" data-sort="${c.id}" title="並べ替え">${c.label}${sorted ? `<i class="fa-solid fa-arrow-${c.id === 'status' || st.sort.dir === 'desc' ? 'down' : 'up'}"></i>` : ''}</button></th>`;
+      return `<th class="${c.num ? 'num' : ''}" data-col="${c.id}"><button class="th-sort" data-sort="${c.id}" title="並べ替え">${c.label}${sorted ? `<i class="fa-solid fa-arrow-${c.id === 'status' || st.sort.dir === 'desc' ? 'down' : 'up'}"></i>` : ''}</button>
+        <span class="col-resize${st.columnWidths[c.id] ? ' is-set' : ''}" data-resize="${c.id}" title="ドラッグで幅を変える／ダブルクリックで自動の幅に戻す"></span></th>`;
     }).join('');
     return { html: `<table class="grid"><thead><tr>${head}</tr></thead><tbody>${tops.map((a) => row(a, 0)).join('')}</tbody></table>`, cols, empty: !tops.length };
   }
@@ -148,8 +157,36 @@
     return `<div class="empty"><i class="fa-solid fa-location-dot empty__icon"></i><p>この設置先には、まだ機器がありません。</p><button class="btn btn--primary" data-cta><i class="fa-solid fa-plus"></i>ここに登録する</button></div>`;
   }
 
+  // ── 列幅（手動） ──
+  // 表示中の列の順番に合わせ、nth-child の規則を 1 つの <style> に書く（行数が多くても速い）
+  function widthCss(widths) {
+    const st = KK.state.get();
+    const cols = KK.columns.list().filter((c) => c.fixed || !st.hiddenColumns.includes(c.id));
+    return cols.map((c, i) => (widths[c.id] ? `.ledger .grid th:nth-child(${i + 1}), .ledger .grid td:nth-child(${i + 1}) { width: ${widths[c.id]}px; min-width: ${widths[c.id]}px; max-width: ${widths[c.id]}px !important; }` : '')).join('\n');
+  }
+  function applyWidths(widths) {
+    let el = document.getElementById('colWidths');
+    if (!el) { el = document.createElement('style'); el.id = 'colWidths'; document.head.appendChild(el); }
+    el.textContent = widthCss(widths || KK.state.get().columnWidths);
+  }
+  function startResize(e, id) {
+    e.preventDefault(); e.stopPropagation();
+    const th = e.target.closest('th');
+    const startX = e.clientX, startW = th.getBoundingClientRect().width;
+    const widths = { ...KK.state.get().columnWidths };
+    document.body.classList.add('is-resizing');
+    const move = (ev) => { widths[id] = Math.max(48, Math.min(800, Math.round(startW + ev.clientX - startX))); applyWidths(widths); };
+    const up = () => {
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+      document.body.classList.remove('is-resizing');
+      KK.state.set({ columnWidths: widths });
+    };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  }
+
   let flashId = null;
   function render() {
+    applyWidths();
     const view = computeView();
     root.querySelector('.ledger__head').innerHTML = headerHtml(view);
     const t = tableHtml(view);
@@ -170,8 +207,15 @@
   function mount(node) {
     root = node;
     root.innerHTML = '<div class="ledger__head"></div><div class="ledger__table" tabindex="0" aria-label="台帳の表（↑↓で選択、→←で構成を開閉）"></div><div class="ledger__foot"></div>';
+    root.addEventListener('mousedown', (e) => { const h = e.target.closest('[data-resize]'); if (h) startResize(e, h.dataset.resize); });
+    root.addEventListener('dblclick', (e) => {
+      const h = e.target.closest('[data-resize]'); if (!h) return;
+      const w = { ...KK.state.get().columnWidths }; delete w[h.dataset.resize];
+      KK.state.set({ columnWidths: w });
+    });
     root.addEventListener('click', (e) => {
       const t = e.target;
+      if (t.closest('[data-resize]')) return;
       const chip = t.closest('[data-status]');
       if (chip) { KK.state.set({ statusFilter: KK.state.get().statusFilter === chip.dataset.status && chip.dataset.status !== 'all' ? 'all' : chip.dataset.status }); return; }
       if (t.closest('[data-clear-filters]')) { KK.state.set({ statusFilter: 'all', query: '', kinds: [], showRetired: false }); KK.bus.emit('filters:cleared'); return; }
@@ -200,7 +244,7 @@
     });
     KK.bus.on('data:changed', render);
     KK.bus.on('state:changed', ({ keys }) => {
-      if (keys.some((k) => ['locationId', 'statusFilter', 'query', 'searchScope', 'selectedId', 'expanded', 'hiddenColumns', 'showRetired', 'kinds', 'navCollapsed', 'sort'].includes(k))) render();
+      if (keys.some((k) => ['locationId', 'statusFilter', 'query', 'searchScope', 'selectedId', 'expanded', 'hiddenColumns', 'showRetired', 'kinds', 'navCollapsed', 'sort', 'columnWidths'].includes(k))) render();
     });
     KK.bus.on('asset:saved', ({ id }) => { flashId = id; });
     render();

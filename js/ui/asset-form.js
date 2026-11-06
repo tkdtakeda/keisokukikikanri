@@ -57,6 +57,7 @@
           <span class="hint">${parent ? '空欄なら親の校正日を引き継ぎます' : '空欄なら「校正日なし」として表示します'}</span></div>
         <div class="field span-1"><label>周期</label><div class="unit-input"><input class="input" data-field="intervalMonths" inputmode="numeric" value="${esc(v.intervalMonths ?? '')}" placeholder="${defInterval}" data-next><span class="unit">か月</span></div></div>
         <div class="field span-2"><label>状態</label><select class="input" data-field="state" data-next>${Object.entries(KK.assetStates).map(([k, s]) => `<option value="${k}"${k === (v.state || 'active') ? ' selected' : ''}>${s.label}</option>`).join('')}</select></div>
+        <div class="field span-6"><label>校正に使った標準器 <span class="sub">（前回校正日の校正で使ったもの）</span></label><div data-std-host></div></div>
         ${(cat?.fields || []).length ? `<div class="form-sep">${esc(cat.name)} の項目 <button type="button" class="btn btn--ghost btn--small" data-edit-cat title="この分類の項目を編集"><i class="fa-solid fa-shapes"></i>項目を編集</button></div>` : ''}
         ${(cat?.fields || []).map((f) => `<div class="field ${f.type === 'longtext' ? 'span-6' : 'span-2'}"><label>${esc(f.label)}${f.required ? '<span class="req">*</span>' : ''}</label>
           ${KK.fieldTypes.get(f.type)?.input(f, v.props?.[f.key] ?? '') || ''}</div>`).join('')}
@@ -89,13 +90,16 @@
       if (el) props[fd.key] = KK.fieldTypes.get(fd.type)?.read(el) ?? el.value;
     });
     v.props = props;
+    v.calStandards = ctx.std.selected.slice();
     if (v.parentId) v.locationId = KK.repo.assets.get(v.parentId)?.locationId || v.locationId;
     if (v.intervalMonths !== '') v.intervalMonths = String(v.intervalMonths).normalize('NFKC');
     return v;
   }
 
   function showErrors(err) {
-    win.querySelectorAll('.field-error').forEach((x) => x.remove());
+    ctx.std.error = err.calStandards || '';
+    stdCtl && stdCtl.redraw();
+    win.querySelectorAll('.field-error').forEach((x) => { if (!x.closest('[data-std-host]')) x.remove(); });
     win.querySelectorAll('.is-invalid').forEach((x) => x.classList.remove('is-invalid'));
     Object.entries(err).forEach(([k, msg]) => {
       const sel = k.startsWith('prop:') ? `[data-prop="${CSS.escape(k.slice(5))}"]` : `[data-field="${k}"]`;
@@ -103,7 +107,7 @@
       el.classList.add('is-invalid');
       el.closest('.field').insertAdjacentHTML('beforeend', `<span class="field-error"><i class="fa-solid fa-circle-exclamation"></i>${esc(msg)}</span>`);
     });
-    const first = win.querySelector('.is-invalid');
+    const first = win.querySelector('.is-invalid') || (err.calStandards ? win.querySelector('[data-std-toggle]') : null);
     return first;
   }
 
@@ -111,7 +115,16 @@
   function rerender(v) {
     const focusKey = document.activeElement?.dataset?.field;
     win.querySelector('.floating__body').innerHTML = bodyHtml(v);
+    mountStd();
     if (focusKey) win.querySelector(`[data-field="${focusKey}"]`)?.focus();
+  }
+
+  let stdCtl = null;
+  function mountStd() {
+    stdCtl = KK.stdPicker.mount(win.querySelector('[data-std-host]'), ctx.std, {
+      getDate: () => KK.readDateInput(win.querySelector('[data-field="lastCalDate"]')),
+      selfId: ctx.id
+    });
   }
 
   async function submit() {
@@ -145,10 +158,11 @@
     }
   }
 
-  function open(v, mode, id, title) {
-    ctx = { mode, id: id || null, pending: [], cont: ctx?.cont || false };
+  function open(v, mode, id, title, standards = []) {
+    ctx = { mode, id: id || null, pending: [], cont: ctx?.cont || false, std: { selected: standards.slice(), open: false, query: '', error: '' } };
     win = KK.floating({ id: 'assetForm', title, icon: mode === 'new' ? 'fa-plus' : 'fa-pen', width: 600, body: '', foot: footHtml() });
     win.querySelector('.floating__body').innerHTML = bodyHtml(v);
+    mountStd();
     KK.wireFormAssist(win);
     wire();
     setTimeout(() => (mode === 'new' && v.categoryId ? win.querySelector(`[data-field="${KK.identityKeys.get(KK.repo.categories.get(v.categoryId)?.identityKey)?.required[0] || 'mgmtNo'}"]`) : win.querySelector('[data-field="categoryId"]'))?.focus(), 0);
@@ -170,6 +184,7 @@
         rerender(v);
       }
       if (e.target.matches('[data-continue]')) ctx.cont = e.target.checked;
+      if (e.target.closest('[data-field="lastCalDate"]')) stdCtl && stdCtl.redraw();
       if (e.target.type === 'file') { addPending(e.target.files); e.target.value = ''; }
     });
     win.addEventListener('click', (e) => {
@@ -210,11 +225,13 @@
     },
     openEdit(id) {
       const a = KK.repo.assets.get(id); if (!a) return;
-      open({ ...a, parentId: a.parentId || '', intervalMonths: a.intervalMonths ?? '' }, 'edit', id, `${R.category(a).name} ${R.identity(a)} を編集`);
+      open({ ...a, parentId: a.parentId || '', intervalMonths: a.intervalMonths ?? '' }, 'edit', id, `${R.category(a).name} ${R.identity(a)} を編集`,
+        KK.trace.currentCalEvent(a)?.standards || []);
     },
     openCopy(id) {
       const a = KK.repo.assets.get(id); if (!a) return;
-      open({ ...a, mgmtNo: '', serial: '', lastCalDate: a.lastCalDate, parentId: a.parentId || '', intervalMonths: a.intervalMonths ?? '', props: { ...a.props } }, 'new', null, `${R.identity(a)} を複製して登録`);
+      open({ ...a, mgmtNo: '', serial: '', lastCalDate: a.lastCalDate, parentId: a.parentId || '', intervalMonths: a.intervalMonths ?? '', props: { ...a.props } }, 'new', null, `${R.identity(a)} を複製して登録`,
+        KK.trace.currentCalEvent(a)?.standards || []);
     }
   };
 })();

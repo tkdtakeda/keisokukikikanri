@@ -26,8 +26,32 @@
     if (!ev.length) return '<div class="sub">記録はまだありません</div>';
     return `<ul class="timeline">${ev.map((e) => {
       const t = KK.eventTypes.get(e.type) || { label: e.type, icon: 'fa-circle' };
-      return `<li><span class="timeline__date">${esc(e.date)}</span><span><i class="fa-solid ${t.icon} timeline__icon"></i><b>${esc(t.label)}</b> ${esc(e.text || '')}${e.by ? `<br><span class="sub">${esc(e.by)}</span>` : ''}</span></li>`;
+      const stds = KK.trace.standardsOf(e);
+      const stdLine = stds.length ? `<br><span class="sub"><i class="fa-solid fa-scale-balanced"></i> 使用標準器：${stds.map((s) => s.asset ? `<button class="tree-link" data-goto="${s.id}">${esc(s.label)}</button>` : esc(s.label)).join('、')}</span>` : '';
+      return `<li><span class="timeline__date">${esc(e.date)}</span><span><i class="fa-solid ${t.icon} timeline__icon"></i><b>${esc(t.label)}</b> ${esc(e.text || '')}${e.by ? `<br><span class="sub">${esc(e.by)}</span>` : ''}${stdLine}</span></li>`;
     }).join('')}</ul>`;
+  }
+
+  /** トレーサビリティ：前回校正に使った標準器と、この標準器で校正した機器 */
+  function traceHtml(a) {
+    const T = KK.trace;
+    const cur = T.currentCalEvent(a);
+    const used = T.standardsOf(cur);
+    const usedHtml = used.length ? `<div class="trace__label">前回校正（${esc(cur.date)}）に使った標準器</div><ul class="trace-list">${used.map((s) => {
+      if (!s.asset) return `<li><span>${esc(s.label)}</span><span class="badge badge--muted"><i class="fa-solid fa-ban"></i>台帳から削除済み</span></li>`;
+      return `<li><button class="tree-link" data-goto="${s.id}">${esc(s.label)}</button>${KK.badge(T.statusAsOf(s.asset, cur.date))}<span class="sub">現在：</span>${KK.badge(R.status(s.asset))}</li>`;
+    }).join('')}</ul>` : '';
+    const usages = T.isStandard(a) || KK.repo.assets.descendants(a.id).some(T.isStandard) ? T.usages(a.id) : [];
+    const bad = usages.filter((u) => u.status.some((s) => s.key === 'overdue'));
+    const LIMIT = 30;
+    const usageHtml = T.isStandard(a) ? `<div class="trace__label">この標準器で校正した機器（${usages.length} 件）</div>
+      ${bad.length ? `<div class="notice notice--warn"><i class="fa-solid fa-triangle-exclamation"></i><span>期限切れの期間に校正した記録が ${bad.length} 件あります（${bad.filter((u) => u.latest).length} 件は現在の校正）。再校正を検討してください。</span></div>` : ''}
+      ${usages.length ? `<ul class="trace-list">${usages.slice(0, LIMIT).map((u) => `<li><span class="timeline__date">${esc(u.event.date)}</span>
+          <button class="tree-link" data-goto="${u.asset.id}">${esc(T.label(u.asset))}</button><span class="sub">${esc(KK.repo.locations.get(u.asset.locationId)?.name || '')}</span>
+          ${u.status.some((s) => s.key === 'overdue') ? KK.badge(u.status.find((s) => s.key === 'overdue')) : ''}${u.latest ? '<span class="tag">現在の校正</span>' : ''}</li>`).join('')}</ul>
+        ${usages.length > LIMIT ? `<div class="sub">ほか ${usages.length - LIMIT} 件</div>` : ''}` : '<div class="sub">まだありません</div>'}` : '';
+    if (!usedHtml && !usageHtml) return '';
+    return `<section class="detail__section"><h4><i class="fa-solid fa-link"></i>トレーサビリティ</h4>${usedHtml}${usageHtml}</section>`;
   }
 
   function render() {
@@ -71,6 +95,7 @@
               ${propRow('識別キー', `<span class="sub">${esc(KK.identityKeys.get(cat.identityKey)?.label || '')}</span>`)}
               ${a.note ? propRow('備考', esc(a.note).replace(/\n/g, '<br>')) : ''}
             </dl></section>
+          ${traceHtml(a)}
           ${hasTree ? `<section class="detail__section"><h4><i class="fa-solid fa-sitemap"></i>構成（一緒に持ち運ぶ単位）
               <button class="btn btn--ghost btn--small" data-add-child><i class="fa-solid fa-plus"></i>子を追加</button></h4>${treeHtml(top, a.id)}</section>` : ''}
           <section class="detail__section"><h4><i class="fa-solid fa-paperclip"></i>写真・書類</h4>

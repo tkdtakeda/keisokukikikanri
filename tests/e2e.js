@@ -76,7 +76,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   check('セットの行に子の最悪状態が出る', (await setRow.locator('.badge').textContent()).includes('あと'), await setRow.locator('.badge').textContent());
   await setRow.locator('[data-toggle]').click();
   const kids = await page.locator('.grid tbody tr').count();
-  check('▶ で構成の子を開ける', kids === 9, `${kids} 行`);
+  check('▶ で構成の子を開ける', kids === 10, `${kids} 行`);
   await page.locator('tr:has(b.ident:text-is("BS-210455-01"))').click();
   await page.waitForSelector('.drawer.is-open');
   check('子の校正日は親を引き継ぐ', (await page.locator('.due-card').textContent()).includes('親'));
@@ -154,6 +154,69 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   check('使用中の分類は削除できず理由が出る', await page.locator('[data-del-cat]').isDisabled());
   await page.keyboard.press('Escape');
   await page.click('.rail__btn[data-panel="master"]');
+
+  // ── トレーサビリティ（校正に使った標準器） ──
+  const idOf = (serial) => KK((x) => window.KK.repo.assets.list().find((a) => a.serial === x)?.id, serial);
+  await page.click('.locnav__item:has-text("組立ライン")');
+  await page.locator('tr:has(b.ident:text-is("S-001"))').click();
+  await page.waitForSelector('.drawer.is-open');
+  check('サンプル同士の標準器がつながり、校正時の期限切れを示す', (await page.locator('.trace-list').first().textContent()).includes('校正時に期限切れ'));
+  await page.click('.locnav__item:has-text("標準室")');
+  await page.locator('tr:has(b.ident:text-is("TG-8102"))').click();
+  const usageText = await page.locator('.detail__section:has(h4:has-text("トレーサビリティ"))').textContent();
+  check('標準器から校正した機器を逆引きでき、期限切れ中の使用を警告する', usageText.includes('この標準器で校正した機器（2 件）') && usageText.includes('期限切れの期間に校正した記録が 1 件'));
+  await shot('07-trace-standard');
+
+  await page.click('.locnav__item:has-text("第1加工ライン")');
+  await page.locator('tr:has(b.ident:text-is("N-001"))').click();
+  await page.click('[data-edit]');
+  await page.waitForSelector('#assetForm');
+  check('編集の窓に前回の標準器が入っている', (await page.locator('.std-picked').textContent()).includes('BS-198812'));
+  await page.click('[data-std-toggle]');
+  const g01 = await idOf('BS-210455-01'); const g05 = await idOf('BS-210455-05');
+  check('別のセットは選べず理由が出る', await page.locator(`[data-std-pick="${g01}"]`).isDisabled() && (await page.locator(`.std-row:has([data-std-pick="${g01}"])`).textContent()).includes('別のセット'));
+  await page.click('[data-std-remove]');
+  await page.click(`[data-std-pick="${g01}"]`); await page.click(`[data-std-pick="${g05}"]`);
+  check('同じセットのゲージは複数選べる', await page.locator('.std-chip').count() === 2);
+  await page.fill('[data-std-q]', '校正用');
+  check('標準器を言葉で絞り込める', await page.locator('.std-row').count() === 3, `${await page.locator('.std-row').count()} 件`);
+  await shot('08-std-picker');
+  await page.click('[data-submit]');
+  await page.waitForSelector('#assetForm', { state: 'detached' });
+  check('校正日はそのままで、使った標準器だけを更新できる', (await page.locator('.trace-list').first().textContent()).includes('BS-210455-01') &&
+    await KK((id) => window.KK.repo.events.forAsset(id).filter((e) => e.type === 'calibration').length, await KK(() => window.KK.state.get().selectedId)) === 2);
+  check('標準器を選ぶには校正日が必要', await KK(() => Object.keys(window.KK.rules.validate({ categoryId: 'cat-micro', locationId: 'x', mgmtNo: 'Z-1', calStandards: ['a'], props: {} })).includes('calStandards')));
+
+  // ── 列幅の手動変更 ──
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  const th = page.locator('th[data-col="model"]');
+  const w0 = (await th.boundingBox()).width;
+  const hb = await page.locator('[data-resize="model"]').boundingBox();
+  await page.mouse.move(hb.x + 3, hb.y + hb.height / 2); await page.mouse.down();
+  await page.mouse.move(hb.x + 83, hb.y + hb.height / 2, { steps: 4 }); await page.mouse.up();
+  const w1 = (await th.boundingBox()).width;
+  check('列見出しの端をドラッグして幅を変えられる', Math.abs(w1 - (w0 + 80)) < 6, `${Math.round(w0)} → ${Math.round(w1)} px`);
+  await page.waitForTimeout(300);
+  await page.reload(); await page.waitForSelector('body.is-ready');
+  check('変えた幅は次に開いたときも保たれる', Math.abs((await page.locator('th[data-col="model"]').boundingBox()).width - w1) < 6);
+  await page.dblclick('[data-resize="model"]');
+  check('ダブルクリックで自動の幅に戻る', await KK(() => !window.KK.state.get().columnWidths.model));
+
+  // ── 設置先の付け替え ──
+  await page.click('.locnav__add');
+  await page.waitForSelector('#locWin');
+  const kumi = await KK(() => window.KK.repo.locations.list().find((l) => l.name === '組立課').id);
+  await page.click(`[data-lid="${kumi}"] [data-lreparent]`);
+  const opts = await page.locator('[data-lparent] option').allTextContents();
+  check('付け替え先に自分と配下は出ない', !opts.some((o) => o.includes('組立')));
+  await page.selectOption('[data-lparent]', { label: '品質保証部' });
+  await page.waitForTimeout(200);
+  check('設置先を別の部の下へ付け替えられる', await KK(() => window.KK.repo.locations.path(window.KK.repo.locations.list().find((l) => l.name === '組立ライン').id)) === '品質保証部 › 組立課 › 組立ライン');
+  await shot('09-reparent');
+  await page.locator('.toast__undo').last().click();
+  await page.waitForTimeout(200);
+  check('付け替えを元に戻せる', await KK(() => window.KK.repo.locations.path(window.KK.repo.locations.list().find((l) => l.name === '組立ライン').id)) === '製造部 › 組立課 › 組立ライン');
+  await page.keyboard.press('Escape');
 
   // ── バックアップ（書き出し→読み込み） ──
   await page.click('.rail__btn[data-panel="backup"]');

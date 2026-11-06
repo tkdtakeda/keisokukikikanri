@@ -132,6 +132,20 @@
 
   // ════ 設置先 ════
   let locWin = null;
+  let reparentId = null; // 付け替え中の設置先
+
+  /** 付け替え先の選択肢：自分と自分の配下は除く */
+  function parentChoices(id) {
+    const banned = new Set(KK.repo.locations.subtreeIds(id));
+    const cur = KK.repo.locations.get(id).parentId || '';
+    const opts = [];
+    const walk = (pid, depth) => KK.repo.locations.children(pid).forEach((l) => {
+      if (banned.has(l.id)) return;
+      opts.push(`<option value="${l.id}"${l.id === cur ? ' selected' : ''}>${'　'.repeat(depth)}${esc(l.name)}</option>`); walk(l.id, depth + 1);
+    });
+    walk(null, 0);
+    return `<option value=""${cur ? '' : ' selected'}>（最上位）</option>` + opts.join('');
+  }
 
   function locTreeHtml() {
     const repo = KK.repo;
@@ -141,11 +155,20 @@
       const kids = repo.locations.children(l.id);
       const n = counts.get(l.id) || 0;
       const blocked = n ? `${n} 個体があるため削除できません` : kids.length ? '下に設置先があるため削除できません' : '';
+      if (reparentId === l.id) {
+        return `<div class="loc-row is-reparent" data-lid="${l.id}" style="--depth:${depth}">
+            <i class="fa-solid fa-arrow-right-arrow-left" style="color:var(--color-primary)"></i>
+            <b class="loc-row__name">${esc(l.name)}</b><span class="sub">の親を</span>
+            <select class="input" data-lparent aria-label="新しい親">${parentChoices(l.id)}</select><span class="sub">にする</span>
+            <button class="btn btn--ghost btn--icon" data-lreparent-cancel title="やめる (Esc)"><i class="fa-solid fa-xmark"></i></button>
+          </div>` + kids.map((k, j) => row(k, depth + 1, kids, j)).join('');
+      }
       return `<div class="loc-row" data-lid="${l.id}" style="--depth:${depth}">
           <i class="fa-solid ${kids.length ? 'fa-folder-open' : 'fa-location-dot'} sub"></i>
           <input class="input" data-lname value="${esc(l.name)}" aria-label="設置先名">
           <span class="sub loc-row__n">${n ? `${n} 個体` : ''}</span>
           <button class="btn btn--ghost btn--icon" data-ladd title="この下に追加"><i class="fa-solid fa-plus"></i></button>
+          <button class="btn btn--ghost btn--icon" data-lreparent title="別の部・課の下へ付け替える"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
           <button class="btn btn--ghost btn--icon" data-lmove="-1" title="上へ" ${i === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i></button>
           <button class="btn btn--ghost btn--icon" data-lmove="1" title="下へ" ${i === siblings.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-down"></i></button>
           <button class="btn btn--ghost btn--icon" data-ldel ${blocked ? 'disabled' : ''} title="${blocked || '削除'}"><i class="fa-solid fa-trash-can"></i></button>
@@ -154,7 +177,7 @@
     const tops = repo.locations.children(null);
     return (tops.length ? tops.map((l, i) => row(l, 0, tops, i)).join('') : '<div class="empty">設置先がまだありません。下のボタンから追加してください。</div>') +
       '<button class="btn btn--ghost" data-ladd-top><i class="fa-solid fa-plus"></i>最上位に追加（部・課など）</button>' +
-      '<div class="hint">名前は入力して Enter またはほかへ移ると保存します。削除できない理由はボタンに表示します。</div>';
+      '<div class="hint">名前は入力して Enter またはほかへ移ると保存します。<i class="fa-solid fa-arrow-right-arrow-left"></i> で別の部・課の下へ付け替えられます（置いてある機器はそのまま一緒に移ります）。削除できない理由はボタンに表示します。</div>';
   }
 
   function renderLoc(focusId) {
@@ -170,10 +193,13 @@
   }
 
   function openLocations() {
-    locWin = KK.floating({ id: 'locWin', title: '設置先', icon: 'fa-location-dot', width: 560, body: '', onClose: () => { locWin = null; } });
+    reparentId = null;
+    locWin = KK.floating({ id: 'locWin', title: '設置先', icon: 'fa-location-dot', width: 600, body: '', onClose: () => { locWin = null; reparentId = null; } });
     renderLoc();
     locWin.addEventListener('click', async (e) => {
       const t = e.target; const rowEl = t.closest('[data-lid]'); const id = rowEl?.dataset.lid;
+      if (t.closest('[data-lreparent]')) { reparentId = id; renderLoc(); locWin.querySelector('[data-lparent]')?.focus(); return; }
+      if (t.closest('[data-lreparent-cancel]')) { reparentId = null; renderLoc(); return; }
       if (t.closest('[data-ladd-top]')) addLoc(null);
       else if (t.closest('[data-ladd]')) addLoc(id);
       else if (t.closest('[data-lmove]')) {
@@ -202,6 +228,22 @@
       if (e.key === 'Enter' && !e.isComposing && e.target.matches('[data-lname]')) { e.preventDefault(); saveName(e.target); }
     });
     locWin.addEventListener('focusin', (e) => { if (e.target.matches('[data-lname]')) e.target.select(); });
+    locWin.addEventListener('change', async (e) => {
+      if (!e.target.matches('[data-lparent]')) return;
+      const id = e.target.closest('[data-lid]').dataset.lid;
+      const before = KK.repo.locations.get(id);
+      const parentId = e.target.value || null;
+      if ((before.parentId || null) === parentId) { reparentId = null; renderLoc(); return; }
+      const order = KK.repo.locations.children(parentId).length;
+      await KK.repo.locations.save({ ...before, parentId, order });
+      reparentId = null;
+      if (locWin) { renderLoc(id); KK.flash(locWin.querySelector(`[data-lid="${id}"]`)); }
+      const path = KK.repo.locations.path(id);
+      KK.toast(`「${before.name}」を ${path} に付け替えました`, { undo: async () => { await KK.repo.locations.save(before); if (locWin) renderLoc(); } });
+    });
+    locWin.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && reparentId) { e.stopPropagation(); reparentId = null; renderLoc(); }
+    }, true);
   }
 
   KK.masters = { openCategories, openLocations };

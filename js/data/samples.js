@@ -94,7 +94,7 @@
         ['cat-feeler', 'S-001', '150A13 13枚組', { leaves: 13, range: '0.03-0.5 mm' }],
         ['cat-dial', 'D-001', '2046S 0.01mm', { range: '0-10 mm', resolution: 0.01 }]
       ];
-      const daysLeft = [[-9, 14, 120, 200, 6, 90], [-7, 180, 25, 300, -2, 45], [60, 150, 240, 12, 100, 320]];
+      const daysLeft = [[-9, 14, 120, 200, 6, 90], [-7, 180, 25, 300, -2, 45], [60, 150, 240, 12, 175, 320]];
       lines.forEach((path, li) => {
         const locationId = b.loc(path);
         plan.forEach(([categoryId, mgmtNo, model, props], pi) => {
@@ -112,7 +112,7 @@
   // ── パターン：標準器（セットと子） ──
   KK.samplePatterns.register({
     id: 'standards', order: 2, label: '標準器（セットと子）', icon: 'fa-scale-balanced',
-    desc: 'ブロックゲージセット 2 組と中のゲージ（兄弟）。子は製造番号で見分け、1 つだけ校正日が異なる',
+    desc: 'ブロックゲージセット 2 組と中のゲージ（兄弟）、校正用マイクロ・すきまゲージ。期限切れの標準器を含み、測定機器と一緒に読み込むと「校正に使った標準器」がつながる',
     build() {
       const b = builder(202);
       const room = b.loc(['品質保証部', '品証課', '標準室']);
@@ -122,6 +122,7 @@
       [1, 3, 8].forEach((n) => b.asset({ categoryId: 'cat-gb', locationId: room, parentId: set2.id, serial: `BS-198812-${String(n).padStart(2, '0')}`, model: `${n}.000mm`, maker: 'ミツトヨ', lastCalDate: '', props: { nominal: n } }));
       b.asset({ categoryId: 'cat-calmicro', locationId: room, mgmtNo: 'CM-01', serial: 'CM55102', model: '基準棒付 0-25mm', maker: 'ミツトヨ', daysLeft: 35, props: { range: '0-25 mm' } });
       b.asset({ categoryId: 'cat-calfeeler', locationId: room, mgmtNo: 'CS-01', serial: 'TG-7781', model: '0.01-1.00mm', maker: '永井ゲージ', daysLeft: 280 });
+      b.asset({ categoryId: 'cat-calfeeler', locationId: room, mgmtNo: 'CS-02', serial: 'TG-8102', model: '0.03-0.50mm', maker: '永井ゲージ', daysLeft: -20, note: '外部校正に出し忘れ。期限切れの間に使った記録がある' });
       return b.out;
     }
   });
@@ -177,7 +178,34 @@
         ...data.events.map((x) => repo.put('events', x))
       ], 'sample');
       await repo.settings.set('samplesLoaded', [...this.loaded(), id]);
+      await this.linkTraceability();
       return data;
+    },
+    /**
+     * サンプル同士の「校正に使った標準器」をつなぐ。読み込む順番によらず、両方そろった時点でつながる。
+     * 対象はサンプルの校正記録で、まだ標準器が付いていないものだけ。
+     */
+    async linkTraceability() {
+      const repo = KK.repo;
+      const bySerial = (s) => repo.assets.list().find((a) => a.sample && a.serial === s);
+      const plan = {
+        'cat-micro': ['BS-210455-01', 'BS-210455-05', 'BS-210455-10'],
+        'cat-dial': ['BS-210455-01', 'BS-210455-02'],
+        'cat-caliper': ['BS-198812'],
+        'cat-calmicro': ['BS-210455-02', 'BS-210455-20']
+      };
+      const ops = [];
+      repo.assets.list().filter((a) => a.sample && a.lastCalDate).forEach((a) => {
+        let serials = plan[a.categoryId];
+        if (a.categoryId === 'cat-feeler') serials = [KK.util.daysBetween(a.lastCalDate, KK.util.today()) < 20 ? 'TG-8102' : 'TG-7781'];
+        if (!serials) return;
+        const ids = serials.map(bySerial).filter(Boolean).map((s) => s.id);
+        if (!ids.length) return;
+        KK.trace.calibrations(a).forEach((e) => {
+          if (e.sample && !(e.standards || []).length) ops.push(repo.put('events', { ...e, ...KK.trace.stamp(ids) }));
+        });
+      });
+      if (ops.length) await repo.commit(ops, 'sample');
     },
     count() {
       return KK.repo.assets.list().filter((a) => a.sample).length;

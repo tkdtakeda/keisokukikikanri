@@ -84,6 +84,7 @@
       if (input.parentId && selfId) {
         if (input.parentId === selfId || R().assets.descendants(selfId).some((d) => d.id === input.parentId)) err.parentId = '自分自身や自分の構成の中は親にできません';
       }
+      Object.assign(err, KK.trace ? KK.trace.validate(input) : {});
       (cat?.fields || []).forEach((f) => {
         const v = input.props?.[f.key];
         if (f.required && (v === '' || v == null)) err['prop:' + f.key] = '必須です';
@@ -135,7 +136,7 @@
       const locName = (id) => repo.locations.path(id);
       if (!before) {
         ops.push(repo.put('events', ev(a.id, 'register', today, `${locName(a.locationId)} に登録`, { sample: a.sample })));
-        if (a.lastCalDate) ops.push(repo.put('events', ev(a.id, 'calibration', a.lastCalDate, '台帳登録時の前回校正日', { sample: a.sample, source: 'ledger' })));
+        if (a.lastCalDate) ops.push(repo.put('events', ev(a.id, 'calibration', a.lastCalDate, '台帳登録時の前回校正日', { sample: a.sample, source: 'ledger', ...KK.trace.stamp(input.calStandards) })));
       } else {
         if (before.locationId !== a.locationId) {
           ops.push(repo.put('events', ev(a.id, 'move', today, `${locName(before.locationId)} → ${locName(a.locationId)}`)));
@@ -151,7 +152,16 @@
           ops.push(repo.put('events', ev(a.id, 'edit', today, `構成の親：${pName(before.parentId)} → ${pName(a.parentId)}`)));
         }
         if (before.lastCalDate !== a.lastCalDate && a.lastCalDate) {
-          ops.push(repo.put('events', ev(a.id, 'calibration', a.lastCalDate, '台帳で前回校正日を更新', { source: 'ledger' })));
+          ops.push(repo.put('events', ev(a.id, 'calibration', a.lastCalDate, '台帳で前回校正日を更新', { source: 'ledger', ...KK.trace.stamp(input.calStandards) })));
+        } else if (a.lastCalDate && input.calStandards !== undefined) {
+          // 校正日は同じで、使った標準器だけを直した
+          const cur = KK.trace.currentCalEvent(before);
+          const stamp = KK.trace.stamp(input.calStandards);
+          const same = JSON.stringify(cur?.standards || []) === JSON.stringify(stamp.standards);
+          if (!same) {
+            ops.push(repo.put('events', cur ? { ...cur, ...stamp, editedAt: U.nowIso() }
+              : ev(a.id, 'calibration', a.lastCalDate, '台帳で使用した標準器を記録', { source: 'ledger', ...stamp })));
+          }
         }
         if (before.state !== a.state) {
           ops.push(repo.put('events', ev(a.id, 'state', today, `${KK.assetStates[before.state]?.label} → ${KK.assetStates[a.state]?.label}`)));

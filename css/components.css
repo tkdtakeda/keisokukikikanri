@@ -224,3 +224,36 @@ table.grid { border-collapse: separate; border-spacing: 0; width: max-content; m
   .search .input { width: 200px; }
   .topbar .btn--primary span { max-width: 140px; }
 }
+
+/* ── 標準器の選択・トレーサビリティ ── */
+.std-picked { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); border-radius: var(--radius-m); }
+.std-chip { display: inline-flex; align-items: center; gap: 4px; padding-left: var(--space-2); border: 1px solid var(--color-border); border-radius: 12px; font-size: var(--font-size-small); }
+.std-chip .btn { height: 20px; width: 20px; }
+.std-chip--ok > i { color: var(--color-ok); }
+.std-chip--warn > i { color: var(--color-warn); }
+.std-chip--danger { border-color: var(--color-danger); background: var(--color-danger-soft); }
+.std-chip--danger > i { color: var(--color-danger); }
+.std-picker { margin-top: var(--space-2); padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-m); background: var(--color-bg); }
+.std-picker .search { width: 100%; }
+.std-picker .search .input { width: 100%; }
+.std-list { max-height: 220px; overflow-y: auto; margin: var(--space-2) 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-s); }
+.std-row { display: flex; align-items: center; gap: var(--space-2); padding: 3px var(--space-2) 3px calc(var(--space-2) + var(--depth) * 18px); cursor: pointer; border-bottom: 1px solid var(--color-border); }
+.std-row:hover { background: var(--color-primary-soft); }
+.std-row.is-disabled { cursor: not-allowed; color: var(--color-text-sub); }
+.std-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.std-empty { padding: var(--space-2); }
+.field-warn { font-size: var(--font-size-small); color: var(--color-warn); display: flex; gap: 4px; align-items: center; }
+.trace__label { font-size: var(--font-size-small); color: var(--color-text-mid); margin: var(--space-2) 0 var(--space-1); font-weight: 600; }
+.trace-list { list-style: none; margin: 0 0 var(--space-2); padding: 0; }
+.trace-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); padding: 3px 0; border-bottom: 1px solid var(--color-border); }
+
+/* ── 列幅の変更 ── */
+.grid th { position: sticky; }
+.col-resize { position: absolute; top: 0; right: 0; width: 7px; height: 100%; cursor: col-resize; z-index: 3; }
+.col-resize::after { content: ""; position: absolute; top: 20%; bottom: 20%; right: 0; width: 1px; background: var(--color-border-strong); }
+.col-resize:hover::after, .is-resizing .col-resize::after { background: var(--color-primary); width: 2px; }
+.col-resize.is-set::after { background: var(--color-primary-line); }
+.is-resizing, .is-resizing * { cursor: col-resize !important; user-select: none; }
+.loc-row.is-reparent { background: var(--color-primary-soft); border-radius: var(--radius-s); padding-top: 4px; padding-bottom: 4px; }
+.loc-row.is-reparent .input { flex: 1; }
+.loc-row__name { white-space: nowrap; }

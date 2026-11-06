@@ -17,9 +17,10 @@
     showRetired: false,
     kinds: [],              // 空はすべて
     navCollapsed: false,
-    sort: { key: 'status', dir: 'desc' }
+    sort: { key: 'status', dir: 'desc' },
+    columnWidths: {}         // 列 ID → 幅(px)。無い列は内容に合わせた自動の幅
   };
-  const persist = ['locationId', 'density', 'hiddenColumns', 'showRetired', 'kinds', 'navCollapsed', 'expanded', 'sort'];
+  const persist = ['locationId', 'density', 'hiddenColumns', 'showRetired', 'kinds', 'navCollapsed', 'expanded', 'sort', 'columnWidths'];
 
   KK.state = {
     get: () => state,

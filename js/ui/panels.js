@@ -46,12 +46,16 @@
           <div class="seg">${dens.map(([v, l]) => `<button class="seg__btn" data-density="${v}" aria-pressed="${s.density === v}">${l}</button>`).join('')}</div></div>
         <div class="panel-group"><div class="panel-group__label">表示する列</div>
           ${KK.columns.list().map((c) => `<label class="chk"><input type="checkbox" data-col="${c.id}" ${c.fixed ? 'checked disabled' : (s.hiddenColumns.includes(c.id) ? '' : 'checked')}>${esc(c.label)}${c.fixed ? '<span class="count">常に表示</span>' : ''}</label>`).join('')}
-          <button class="btn btn--ghost" data-col-reset><i class="fa-solid fa-rotate-left"></i>初期の列に戻す</button></div>`;
+          <button class="btn btn--ghost" data-col-reset><i class="fa-solid fa-rotate-left"></i>初期の列に戻す</button></div>
+        <div class="panel-group"><div class="panel-group__label">列の幅</div>
+          <div class="sub">列見出しの右端をドラッグすると幅を変えられます。ダブルクリックでその列だけ自動の幅に戻ります。</div>
+          <button class="btn btn--ghost" data-width-reset ${Object.keys(s.columnWidths).length ? '' : 'disabled title="手動で変えた列はありません"'}><i class="fa-solid fa-left-right"></i>すべての列を自動の幅に戻す${Object.keys(s.columnWidths).length ? `（${Object.keys(s.columnWidths).length} 列）` : ''}</button></div>`;
     },
     wire(el) {
       el.addEventListener('click', (e) => {
         const d = e.target.closest('[data-density]'); if (d) { KK.state.set({ density: d.dataset.density }); rerender(); }
         if (e.target.closest('[data-col-reset]')) { KK.state.set({ hiddenColumns: KK.defaultHiddenColumns.slice() }); rerender(); }
+        if (e.target.closest('[data-width-reset]')) { KK.state.set({ columnWidths: {} }); rerender(); KK.toast('列の幅を自動に戻しました'); }
       });
       el.addEventListener('change', (e) => {
         const id = e.target.dataset.col; if (!id) return;
@@ -198,7 +202,11 @@
       const b = e.target.closest('[data-panel]'); if (b) open(b.dataset.panel);
       if (e.target.closest('[data-help]')) KK.help.open();
     });
-    KK.bus.on('state:changed', ({ keys }) => { renderRail(); if (keys.some((k) => ['kinds', 'showRetired'].includes(k)) && openId === 'filter') rerender(); });
+    KK.bus.on('state:changed', ({ keys }) => {
+      renderRail();
+      if (keys.some((k) => ['kinds', 'showRetired'].includes(k)) && openId === 'filter') rerender();
+      if (keys.includes('columnWidths') && openId === 'view') rerender();
+    });
     KK.bus.on('data:changed', () => { renderRail(); if (openId && openId !== 'view') rerender(); });
     KK.bus.on('filters:cleared', () => { if (openId === 'filter') rerender(); });
     renderRail();
