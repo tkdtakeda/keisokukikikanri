@@ -16,7 +16,7 @@
     const node = (a) => {
       const kids = KK.repo.assets.children(a.id);
       return `<li><button class="tree-link${a.id === currentId ? ' is-current' : ''}" data-goto="${a.id}">${esc(R.category(a).name)} <b>${esc(R.identity(a))}</b></button>
-        <span class="sub">${esc(a.model)}</span> ${KK.badge(R.status(a))}${kids.length ? `<ul>${kids.map(node).join('')}</ul>` : ''}</li>`;
+        <span class="sub">${esc(KK.inherit.modelText(a))}</span> ${KK.badge(R.status(a))}${kids.length ? `<ul>${kids.map(node).join('')}</ul>` : ''}</li>`;
     };
     return `<ul class="mini-tree">${node(top)}</ul>`;
   }
@@ -30,6 +30,24 @@
       const stdLine = stds.length ? `<br><span class="sub"><i class="fa-solid fa-scale-balanced"></i> 使用標準器：${stds.map((s) => s.asset ? `<button class="tree-link" data-goto="${s.id}">${esc(s.label)}</button>` : esc(s.label)).join('、')}</span>` : '';
       return `<li><span class="timeline__date">${esc(e.date)}</span><span><i class="fa-solid ${t.icon} timeline__icon"></i><b>${esc(t.label)}</b> ${esc(e.text || '')}${e.by ? `<br><span class="sub">${esc(e.by)}</span>` : ''}${stdLine}</span></li>`;
     }).join('')}</ul>`;
+  }
+
+  /** 型式・メーカー・測定範囲・最小表示量・校正区分・校正会社（引き継いだ値には出どころの札） */
+  function specRows(a) {
+    const I = KK.inherit;
+    const m = I.model(a);
+    const link = (attr, id, text) => `<button class="tree-link" ${attr}="${id}">${esc(text)}</button>`;
+    const mk = I.maker(a); const cal = I.calibrator(a); const ct = I.calType(a); const rg = I.range(a);
+    const res = R.resolution(a);
+    const resTag = res.resSource === 'asset' || res.unitSource === 'asset' ? '<span class="tag">この機器で上書き</span>' : (res.resSource === 'model' ? I.tag('model') : '<span class="tag">分類の既定</span>');
+    return [
+      propRow('型式', m ? link('data-open-model', m.id, I.modelLabel(m)) : (a.model ? `${esc(a.model)} <span class="sub">（型式の台帳に未登録）</span>` : '')),
+      propRow('メーカー', mk.value ? link('data-open-company', mk.value, I.companyName(mk.value)) + I.tag(mk.source) : ''),
+      propRow('測定範囲', rg.value ? esc(I.rangeText(a)) + I.tag(rg.source) : ''),
+      propRow('最小表示量', R.resolutionText(a) ? `${esc(R.resolutionText(a))} ${resTag}` : ''),
+      propRow('校正区分', `<i class="fa-solid ${KK.calTypes[ct.value].icon}"></i> ${KK.calTypes[ct.value].label}${I.tag(ct.source)}`),
+      ct.value === 'external' ? propRow('校正会社', cal.value ? link('data-open-company', cal.value, I.companyName(cal.value)) + I.tag(cal.source) : '<span class="sub">未設定</span>') : ''
+    ].join('');
   }
 
   /** トレーサビリティ：前回校正に使った標準器と、この標準器で校正した機器 */
@@ -75,7 +93,7 @@
             <button class="btn btn--ghost btn--icon" data-more title="その他の操作"><i class="fa-solid fa-ellipsis-vertical"></i></button>
             <button class="btn btn--ghost btn--icon" data-close title="閉じる (Esc)"><i class="fa-solid fa-xmark"></i></button>
           </div>
-          <div class="detail__meta">${esc(a.model)}　<i class="fa-solid fa-location-dot"></i> ${esc(KK.repo.locations.path(a.locationId))}</div>
+          <div class="detail__meta">${esc(KK.inherit.modelText(a))}　<i class="fa-solid fa-location-dot"></i> ${esc(KK.repo.locations.path(a.locationId))}</div>
         </header>
         <div class="detail__body">
           <section class="due-card due-card--${st.cls}">
@@ -88,10 +106,8 @@
               ${propRow('分類', `${esc(cat.name)}（${esc(R.kind(a).label)}）`)}
               ${propRow('管理番号', esc(a.mgmtNo))}
               ${propRow('製造番号', esc(a.serial))}
-              ${propRow('型式・仕様', esc(a.model))}
-              ${propRow('メーカー', esc(a.maker))}
-              ${propRow('最小表示量', R.resolutionText(a) ? `${esc(R.resolutionText(a))} <span class="tag">${R.resolution(a).inheritedRes && R.resolution(a).inheritedUnit ? '分類の既定' : 'この機器で上書き'}</span>` : '')}
-              ${(cat.fields || []).map((f) => propRow(f.label, KK.fieldTypes.get(f.type)?.format(a.props?.[f.key] ?? '', f, a) ?? esc(a.props?.[f.key]))).join('')}
+              ${specRows(a)}
+              ${(cat.fields || []).map((f) => { const r = KK.inherit.prop(a, f.key); const html = KK.fieldTypes.get(f.type)?.format(r.value ?? '', f, a) ?? esc(r.value); return propRow(f.label, html ? html + KK.inherit.tag(r.source) : ''); }).join('')}
               ${propRow('状態', esc(KK.assetStates[a.state]?.label))}
               ${propRow('識別キー', `<span class="sub">${esc(KK.identityKeys.get(cat.identityKey)?.label || '')}</span>`)}
               ${a.note ? propRow('備考', esc(a.note).replace(/\n/g, '<br>')) : ''}
@@ -173,6 +189,8 @@
       else if (t.closest('[data-edit]')) KK.assetForm.openEdit(KK.state.get().selectedId);
       else if (t.closest('[data-more]')) moreMenu(t.closest('[data-more]'));
       else if (t.closest('[data-add-child]')) KK.assetForm.openNew({ parentId: KK.repo.assets.topOf(KK.state.get().selectedId).id });
+      else if (t.closest('[data-open-company]')) KK.directoryUi.openCard(t.closest('[data-open-company]').dataset.openCompany);
+      else if (t.closest('[data-open-model]')) KK.directoryUi.openModels(t.closest('[data-open-model]').dataset.openModel);
       else if (t.closest('[data-goto]')) KK.ledger.select(t.closest('[data-goto]').dataset.goto, { scroll: true });
       else if (t.closest('[data-del-att]')) {
         const id = t.closest('[data-del-att]').dataset.delAtt;

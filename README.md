@@ -38,6 +38,9 @@
   - 数値は打ったとおりの文字で保存し、表示桁に足りない 0 だけを補う（1 → 1.000）。桁を超えた値は丸めずに残して警告する
   - 単位の選択肢は meta の `units`（'' は単位なし）。利用者が追加できる
   - データの形を変えたときは `js/data/migrate.js` に手順を足す（起動時に 1 回、`schemaVersion` で管理）
+- **型式**（`models`）：型番（空欄可）・名称・メーカー・測定範囲（下限・上限の数値）・単位・最小表示量・分類の項目。値は **分類 → 型式 → 機器** の順に決まる（`js/domain/inherit.js`）。今後、校正の測定点も型式ごとに持たせる予定
+- **会社**（`companies`）：1 社 1 件。担当者（複数）・電話・URL・認定・追加の項目（meta の `companyFields`）。役割の印は持たず、機器の「メーカー」「校正会社」のどちらの欄に入れたかで役割が決まる
+- **引き継ぎ**：メーカーは 機器 → 型式 → 親、校正区分（社内／外部）・校正会社は 機器 → 親 → 分類。外部校正では標準器を記録しない
 - **校正に使った標準器（トレーサビリティ）は校正の記録に持たせる**（`events.standards`）。構成（親子）とは別の関係
   - 同じ校正で別のセット（セット全体・中のゲージとも）は使えない
   - 標準器が校正日の時点で有効だったかを、標準器自身の校正記録から判定する（期限切れでも登録はでき、警告を出す）
@@ -48,9 +51,11 @@
 |---|---|
 | `locations` | 設置先（id, name, parentId, order） |
 | `categories` | 分類（kind, intervalMonths, identityKey, unit, resolution, fields[]。数値の項目は unit・digits を持つ） |
-| `assets` | 個体（categoryId, locationId, parentId, mgmtNo, serial, model, maker, lastCalDate, intervalMonths, unit, resolution, state, props{}, note） |
+| `assets` | 個体（categoryId, locationId, parentId, mgmtNo, serial, model, maker, lastCalDate, intervalMonths, unit, resolution, modelId, makerId, calType, calibratorId, range, state, props{}, note。null は引き継ぎ） |
 | `events` | 記録（assetId, type, date, text, by。校正なら standards[], standardLabels[]） |
 | `attachments` | 写真・書類（assetId, name, type, blob） |
+| `models` | 型式（categoryId, modelNo, name, makerId, range{min,max}, unit, resolution, props{}） |
+| `companies` | 会社（name, short, phone, address, url, accreditation, contacts[], props{}） |
 | `meta` | 設定（画面の状態、前回の書き出し日など） |
 
 サンプルの記録には `sample: true` が付き、これを手がかりにサンプルだけを消す。
@@ -70,9 +75,13 @@ js/data/samples.js   サンプルの登録簿と、読み込み・サンプル�
 js/data/backup.js    JSON の書き出し・読み込み
 js/domain/units.js   単位の選択肢と、数値の表示桁（桁をそろえる・超えたら警告）
 js/domain/catalog.js 大分類・識別キー・項目の型・既定の分類
+js/domain/inherit.js 値の引き継ぎ（分類 → 型式 → 機器、親 → 子）と出どころの札
+js/domain/directory.js 会社・型式の候補・その場での登録・使用数・旧い文字の読み取り
 js/data/migrate.js   データの移し替え（起動時に 1 回）
 js/domain/rules.js   期限・状態・入力検査・保存の手続き（記録の作成）
 js/domain/trace.js   トレーサビリティ（選べる標準器・同時に使えない組合せ・校正時点の有効性・逆引き）
+js/ui/combo.js       打ちながら探せる選択欄（型式・会社。一覧にない名前はその場で登録）
+js/ui/master-directory.js 会社・型式の画面と、会社の小窓
 js/ui/*.js           画面部品（設置先・台帳・詳細・登録フォーム・マスタ編集・パネル・説明書・共通部品）
 js/app.js            起動と組み立て
 tests/e2e.js         動作確認スクリプト（本体とは別）
@@ -98,7 +107,7 @@ mockups/             レイアウト案 5 案と評価
 
 ## 動作確認
 
-Node.js と Playwright がある環境で次を実行する（主要な作業経路 65 項目を確認）。
+Node.js と Playwright がある環境で次を実行する（主要な作業経路 85 項目を確認）。
 
 ```bash
 node tests/e2e.js

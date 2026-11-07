@@ -26,14 +26,14 @@
     const st = T().statusAsOf(a, date);
     return `<label class="std-row${disabled ? ' is-disabled' : ''}" style="--depth:${depth}" title="${esc(reason)}">
         <input type="checkbox" data-std-pick="${a.id}" ${checked || coveredBySet ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
-        <span class="std-row__name">${esc(R().category(a).name)} <b>${esc(R().identity(a))}</b> <span class="sub">${esc(a.model)}</span></span>
+        <span class="std-row__name">${esc(R().category(a).name)} <b>${esc(R().identity(a))}</b> <span class="sub">${esc(KK.inherit.modelText(a))}</span></span>
         ${reason ? `<span class="sub">${esc(reason)}</span>` : KK.badge(st)}</label>`;
   }
 
   function listHtml(m, date, selfId) {
     const q = norm(m.query || '');
     const groups = T().candidates(selfId);
-    const match = (a) => !q || norm(`${R().category(a).name} ${a.mgmtNo} ${a.serial} ${a.model} ${KK.repo.locations.path(a.locationId)}`).includes(q);
+    const match = (a) => !q || norm(`${R().category(a).name} ${a.mgmtNo} ${a.serial} ${KK.inherit.modelText(a)} ${KK.repo.locations.path(a.locationId)}`).includes(q);
     const html = groups.map((g) => {
       const kids = g.children.filter(match);
       if (!match(g.asset) && !kids.length) return '';

@@ -12,13 +12,18 @@
   // ── 絞り込み ──
   KK.panelRegistry.register({
     id: 'filter', order: 1, group: 'work', icon: 'fa-filter', label: '絞り込み',
-    active: () => { const s = KK.state.get(); return s.kinds.length + (s.showRetired ? 1 : 0); },
+    active: () => { const s = KK.state.get(); return s.kinds.length + (s.showRetired ? 1 : 0) + (s.calTypeFilter ? 1 : 0) + (s.calibratorFilter ? 1 : 0); },
     render() {
       const s = KK.state.get();
       const n = (k) => KK.repo.assets.list().filter((a) => KK.rules.category(a).kind === k && a.state !== 'retired').length;
       return `<h3><i class="fa-solid fa-filter"></i>絞り込み</h3>
         <div class="panel-group"><div class="panel-group__label">大分類（選ばなければすべて）</div>
           ${KK.kinds.list().map((k) => `<label class="chk"><input type="checkbox" data-kind="${k.id}" ${s.kinds.includes(k.id) ? 'checked' : ''}><i class="fa-solid ${k.icon}"></i>${esc(k.label)}<span class="count">${n(k.id)}</span></label>`).join('')}</div>
+        <div class="panel-group"><div class="panel-group__label">校正区分</div>
+          <div class="seg">${[['', 'すべて'], ['internal', '社内'], ['external', '外部']].map(([v, l]) => `<button class="seg__btn" data-caltype="${v}" aria-pressed="${s.calTypeFilter === v}">${l}</button>`).join('')}</div></div>
+        <div class="panel-group"><div class="panel-group__label">校正会社（外部校正）</div>
+          <select class="input" data-calibrator style="width:100%"><option value="">すべて</option>${KK.directory.companyItems('calibrator').filter((c) => KK.directory.companyUsage(c.id).calibrator > 0 || c.id === s.calibratorFilter)
+            .map((c) => `<option value="${c.id}"${c.id === s.calibratorFilter ? ' selected' : ''}>${esc(c.label)}（${KK.directory.companyUsage(c.id).calibrator}）</option>`).join('')}</select></div>
         <div class="panel-group"><div class="panel-group__label">廃棄</div>
           <label class="chk"><input type="checkbox" data-retired ${s.showRetired ? 'checked' : ''}>廃棄した個体も表示する<span class="count">${KK.repo.assets.list().filter((a) => a.state === 'retired').length}</span></label></div>
         <div class="panel-group"><div class="panel-group__label">状態</div><div class="sub">状態の絞り込みは、表の上の件数ボタンで行います。</div></div>`;
@@ -31,7 +36,9 @@
           KK.state.set({ kinds: [...set] });
         }
         if (e.target.matches('[data-retired]')) KK.state.set({ showRetired: e.target.checked });
+        if (e.target.matches('[data-calibrator]')) KK.state.set({ calibratorFilter: e.target.value });
       });
+      el.addEventListener('click', (e) => { const b = e.target.closest('[data-caltype]'); if (b) KK.state.set({ calTypeFilter: b.dataset.caltype }); });
     }
   });
 
@@ -68,11 +75,15 @@
 
   // ── 分類と項目・設置先 ──
   KK.panelRegistry.register({
-    id: 'master', order: 3, group: 'setup', icon: 'fa-shapes', label: '分類・設置先',
+    id: 'master', order: 3, group: 'setup', icon: 'fa-shapes', label: '分類・型式・会社・設置先',
     render() {
-      return `<h3><i class="fa-solid fa-shapes"></i>分類・設置先</h3>
+      return `<h3><i class="fa-solid fa-shapes"></i>分類・型式・会社・設置先</h3>
         <div class="panel-group"><button class="btn btn--block" data-open-cat><i class="fa-solid fa-shapes"></i>分類と項目を編集</button>
           <div class="sub">分類ごとに、持つ項目・校正周期・見分け方（識別キー）を決めます。分類 ${KK.repo.categories.list().length} 件</div></div>
+        <div class="panel-group"><button class="btn btn--block" data-open-models><i class="fa-solid fa-tag"></i>型式</button>
+          <div class="sub">型番ごとの測定範囲・最小表示量・メーカー。型式 ${KK.repo.models.list().length} 件</div></div>
+        <div class="panel-group"><button class="btn btn--block" data-open-companies><i class="fa-solid fa-building"></i>会社（メーカー・校正会社）</button>
+          <div class="sub">担当者・電話番号など。会社 ${KK.repo.companies.list().length} 件</div></div>
         <div class="panel-group"><button class="btn btn--block" data-open-loc><i class="fa-solid fa-location-dot"></i>設置先を編集</button>
           <div class="sub">部 › 課 › ライン の階層。設置先 ${KK.repo.locations.list().length} 件</div></div>`;
     },
@@ -80,6 +91,8 @@
       el.addEventListener('click', (e) => {
         if (e.target.closest('[data-open-cat]')) KK.masters.openCategories();
         if (e.target.closest('[data-open-loc]')) KK.masters.openLocations();
+        if (e.target.closest('[data-open-models]')) KK.directoryUi.openModels();
+        if (e.target.closest('[data-open-companies]')) KK.directoryUi.openCompanies();
       });
     }
   });
@@ -204,7 +217,7 @@
     });
     KK.bus.on('state:changed', ({ keys }) => {
       renderRail();
-      if (keys.some((k) => ['kinds', 'showRetired'].includes(k)) && openId === 'filter') rerender();
+      if (keys.some((k) => ['kinds', 'showRetired', 'calTypeFilter', 'calibratorFilter'].includes(k)) && openId === 'filter') rerender();
       if (keys.includes('columnWidths') && openId === 'view') rerender();
     });
     KK.bus.on('data:changed', () => { renderRail(); if (openId && openId !== 'view') rerender(); });

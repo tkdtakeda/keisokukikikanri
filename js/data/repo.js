@@ -6,7 +6,9 @@
   const KK = window.KK;
   const db = KK.db;
 
-  const cache = { locations: new Map(), categories: new Map(), assets: new Map(), events: new Map() };
+  // メモリに全件を持つストア（添付は大きいので必要なときだけ読む）
+  const CACHED = ['locations', 'categories', 'assets', 'events', 'companies', 'models'];
+  const cache = Object.fromEntries(CACHED.map((s) => [s, new Map()]));
   const meta = new Map();
   let childIndex = null; // parentId → [asset]
 
@@ -14,11 +16,9 @@
 
   async function load() {
     await db.open();
-    const [locs, cats, assets, events, metas] = await Promise.all(['locations', 'categories', 'assets', 'events', 'meta'].map(db.getAll));
-    cache.locations = new Map(locs.map((x) => [x.id, x]));
-    cache.categories = new Map(cats.map((x) => [x.id, x]));
-    cache.assets = new Map(assets.map((x) => [x.id, x]));
-    cache.events = new Map(events.map((x) => [x.id, x]));
+    const lists = await Promise.all(CACHED.map(db.getAll));
+    CACHED.forEach((s, i) => { cache[s] = new Map(lists[i].map((x) => [x.id, x])); });
+    const metas = await db.getAll('meta');
     meta.clear(); metas.forEach((m) => meta.set(m.key, m.value));
     childIndex = null;
   }
@@ -131,33 +131,37 @@
     return snap;
   }
   async function restore(snap) {
-    await commit([
-      ...(snap.locations || []).map((x) => db.put('locations', x)),
-      ...(snap.categories || []).map((x) => db.put('categories', x)),
-      ...(snap.assets || []).map((x) => db.put('assets', x)),
-      ...(snap.events || []).map((x) => db.put('events', x)),
-      ...(snap.attachments || []).map((x) => db.put('attachments', x))
-    ], 'restore');
+    await commit([...CACHED, 'attachments'].flatMap((st) => (snap[st] || []).map((x) => db.put(st, x))), 'restore');
   }
 
   /** 全データ（バックアップ用） */
   async function dumpAll() {
-    return {
-      locations: [...cache.locations.values()],
-      categories: [...cache.categories.values()],
-      assets: [...cache.assets.values()],
-      events: [...cache.events.values()],
-      attachments: await db.getAll('attachments')
-    };
+    const out = Object.fromEntries(CACHED.map((s) => [s, [...cache[s].values()]]));
+    out.attachments = await db.getAll('attachments');
+    return out;
   }
   /** 全データを置き換える（読み込み用） */
   async function replaceAll(data) {
-    const stores = ['locations', 'categories', 'assets', 'events', 'attachments'];
+    const stores = [...CACHED, 'attachments'];
     await commit([
       ...stores.map((s) => db.clear(s)),
       ...stores.flatMap((s) => (data[s] || []).map((x) => db.put(s, x)))
     ], 'replace');
   }
 
-  KK.repo = { load, commit, locations, categories, assets, events, attachments, settings, snapshotAssets, removeAssets, restore, dumpAll, replaceAll, put: db.put, del: db.del };
+  // ── 会社・型式 ──
+  const byName = (a, b) => a.name.localeCompare(b.name, 'ja');
+  const companies = {
+    list: () => [...cache.companies.values()].sort(byName),
+    get: (id) => (id ? cache.companies.get(id) : null),
+    save: (c) => commit([db.put('companies', c)], 'companies')
+  };
+  const models = {
+    list: () => [...cache.models.values()].sort((a, b) => (a.categoryId || '').localeCompare(b.categoryId || '') || (a.modelNo || a.name || '').localeCompare(b.modelNo || b.name || '', 'ja', { numeric: true })),
+    get: (id) => (id ? cache.models.get(id) : null),
+    forCategory: (catId) => models.list().filter((m) => m.categoryId === catId),
+    save: (m) => commit([db.put('models', m)], 'models')
+  };
+
+  KK.repo = { load, commit, locations, categories, assets, events, attachments, settings, companies, models, snapshotAssets, removeAssets, restore, dumpAll, replaceAll, put: db.put, del: db.del };
 })();

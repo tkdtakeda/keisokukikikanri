@@ -41,6 +41,61 @@
         await KK.units.ensure(used);
         return ops.length;
       }
+    },
+    {
+      version: 3,
+      label: 'メーカーと型式を会社・型式の台帳に移し、測定範囲を数値にする',
+      async run() {
+        const repo = KK.repo; const U = KK.util; const D = KK.directory;
+        const ops = [];
+        const sameRange = (x, y) => (x && y && x.min === y.min && x.max === y.max && (x.unit ?? null) === (y.unit ?? null));
+        // 1. 分類：校正区分の既定、文字の「測定範囲」項目を外す（値は個体から読む）
+        const rangeKey = new Map();
+        repo.categories.list().forEach((c) => {
+          const def = KK.defaultCategories.find((d) => d.id === c.id);
+          const old = (c.fields || []).find((f) => (f.type || 'text') === 'text' && (f.key === 'range' || /範囲/.test(f.label || '')));
+          if (old) rangeKey.set(c.id, old.key);
+          const calType = c.calType || def?.calType || (c.kind === 'measure' ? 'internal' : 'external');
+          if (old || !c.calType) ops.push(repo.put('categories', { ...c, calType, fields: (c.fields || []).filter((f) => f !== old) }));
+        });
+        // 2. 会社：メーカーの文字から（同じ名前は 1 社に）
+        const companies = new Map(repo.companies.list().map((c) => [U.norm(c.name), c.id]));
+        const company = (name) => {
+          const n = String(name || '').trim(); if (!n) return null;
+          if (!companies.has(U.norm(n))) {
+            const c = { id: U.uid('co'), name: n, short: '', phone: '', address: '', url: '', accreditation: '', note: '', contacts: [], props: {}, createdAt: U.nowIso() };
+            ops.push(repo.put('companies', c)); companies.set(U.norm(n), c.id);
+          }
+          return companies.get(U.norm(n));
+        };
+        // 3. 型式：同じ分類・同じ文字・同じメーカーを 1 件に
+        const models = new Map();
+        repo.assets.list().forEach((a) => {
+          if (a.modelId !== undefined && a.makerId !== undefined) return; // 移し替え済み
+          const cat = repo.categories.get(a.categoryId);
+          const makerId = company(a.maker);
+          const rk = rangeKey.get(a.categoryId);
+          let range = rk ? D.parseRange(a.props?.[rk]) : null;
+          if (range && (range.unit === (cat?.unit ?? '') || !range.unit)) range = { ...range, unit: null };
+          const next = { ...a, maker: '', makerId: null, modelId: null, range: null, calibratorId: a.calibratorId ?? null, calType: a.calType ?? null };
+          if (a.model) {
+            const key = `${a.categoryId}|${U.norm(a.model)}|${makerId || ''}`;
+            if (!models.has(key)) {
+              const m = { id: U.uid('md'), categoryId: a.categoryId, ...D.splitModel(a.model), makerId, range, unit: null, resolution: null, props: {}, note: '', sample: !!a.sample, createdAt: U.nowIso() };
+              models.set(key, m); ops.push(repo.put('models', m));
+            }
+            const m = models.get(key);
+            next.modelId = m.id; next.model = '';
+            if (range && !sameRange(range, m.range)) next.range = range;
+          } else {
+            next.makerId = makerId;
+            next.range = range;
+          }
+          ops.push(repo.put('assets', next));
+        });
+        if (ops.length) await repo.commit(ops, 'migrate');
+        return ops.length;
+      }
     }
   ];
 

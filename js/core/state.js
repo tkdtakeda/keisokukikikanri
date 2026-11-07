@@ -16,6 +16,8 @@
     hiddenColumns: [],
     showRetired: false,
     kinds: [],              // 空はすべて
+    calTypeFilter: '',      // '' すべて / internal / external
+    calibratorFilter: '',   // 校正会社の id（'' すべて）
     navCollapsed: false,
     sort: { key: 'status', dir: 'desc' },
     columnWidths: {}         // 列 ID → 幅(px)。無い列は内容に合わせた自動の幅

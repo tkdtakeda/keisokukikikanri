@@ -13,12 +13,15 @@
     { id: 'status', label: '状態', fixed: true, sortVal: (a, c) => -(c.status.rank * 1e6) + (c.status.days ?? 0), cell: (a, c) => KK.badge(c.status) },
     { id: 'identity', label: '番号', fixed: true, sortVal: (a) => R.identity(a), cell: (a, c) => `${c.indent}${c.toggle}<b class="ident">${esc(R.identity(a))}</b>${c.kids ? ` <span class="sub">（${c.kids}）</span>` : ''}${a.sample ? ' <span class="tag tag--sample">サンプル</span>' : ''}` },
     { id: 'category', label: '分類', sortVal: (a) => R.category(a).name, cell: (a) => `${KK.kindTag(a)} ${esc(R.category(a).name)}` },
-    { id: 'model', label: '型式・仕様', max: 260, sortVal: (a) => a.model, cell: (a) => esc(a.model) || dash },
+    { id: 'model', label: '型式', max: 260, sortVal: (a) => KK.inherit.modelText(a), cell: (a) => esc(KK.inherit.modelText(a)) || dash },
+    { id: 'range', label: '測定範囲', sortVal: (a) => Number(KK.inherit.range(a).value?.max) || 0, cell: (a) => esc(KK.inherit.rangeText(a)) || dash },
     { id: 'resolution', label: '最小表示量', num: true, sortVal: (a) => Number(R.resolution(a).resolution) || 0,
       cell: (a) => (R.resolutionText(a) ? `${esc(R.resolutionText(a))}${R.resolution(a).inheritedRes && R.resolution(a).inheritedUnit ? '' : ' <span class="tag" title="この機器で上書き">上書き</span>'}` : dash) },
     { id: 'mgmtNo', label: '管理番号', sortVal: (a) => a.mgmtNo, cell: (a) => esc(a.mgmtNo) || dash },
     { id: 'serial', label: '製造番号', sortVal: (a) => a.serial, cell: (a) => esc(a.serial) || dash },
-    { id: 'maker', label: 'メーカー', sortVal: (a) => a.maker, cell: (a) => esc(a.maker) || dash },
+    { id: 'maker', label: 'メーカー', sortVal: (a) => KK.inherit.makerName(a), cell: (a) => esc(KK.inherit.makerName(a)) || dash },
+    { id: 'calType', label: '校正区分', sortVal: (a) => KK.inherit.calType(a).value, cell: (a) => { const t = KK.calTypes[KK.inherit.calType(a).value]; return `<i class="fa-solid ${t.icon} sub"></i> ${t.label}`; } },
+    { id: 'calibrator', label: '校正会社', sortVal: (a) => KK.inherit.calibratorName(a), cell: (a) => esc(KK.inherit.calibratorName(a)) || dash },
     { id: 'location', label: '置き場所', max: 280, sortVal: (a) => KK.repo.locations.path(a.locationId), cell: (a, c) => esc(c.locText) },
     { id: 'lastCal', label: '前回校正', num: true, sortVal: (a) => R.calDate(a), cell: (a) => (R.calDate(a) ? `${R.calDate(a)}${R.isCalInherited(a) ? ' <span class="tag" title="親の校正日を引き継いでいます">親</span>' : ''}` : dash) },
     { id: 'interval', label: '周期', num: true, sortVal: (a) => R.interval(a), cell: (a) => `${R.interval(a)} か月` },
@@ -33,13 +36,13 @@
       } },
     { id: 'note', label: '備考', max: 240, sortVal: (a) => a.note, cell: (a) => esc(a.note) }
   ].forEach((c, i) => KK.columns.register({ ...c, order: i }));
-  KK.defaultHiddenColumns = ['mgmtNo', 'maker', 'interval', 'standards', 'note'];
+  KK.defaultHiddenColumns = ['mgmtNo', 'maker', 'calType', 'calibrator', 'interval', 'standards', 'note'];
 
   let root = null;
   let rowOrder = []; // 表示中の行 ID（キーボード移動用）
 
   // ── 絞り込み ──
-  const hay = (a) => norm([a.mgmtNo, a.serial, a.model, a.maker, a.note, R.category(a).name, KK.repo.locations.path(a.locationId),
+  const hay = (a) => norm([a.mgmtNo, a.serial, KK.inherit.modelText(a), KK.inherit.makerName(a), KK.inherit.calibratorName(a), a.note, R.category(a).name, KK.repo.locations.path(a.locationId),
     ...Object.values(a.props || {})].join(' '));
 
   function scopeAssets() {
@@ -52,6 +55,8 @@
     }
     if (!st.showRetired) list = list.filter((a) => a.state !== 'retired');
     if (st.kinds.length) list = list.filter((a) => st.kinds.includes(R.category(a).kind));
+    if (st.calTypeFilter) list = list.filter((a) => KK.inherit.calType(a).value === st.calTypeFilter);
+    if (st.calibratorFilter) list = list.filter((a) => KK.inherit.calType(a).value === 'external' && KK.inherit.calibrator(a).value === st.calibratorFilter);
     if (st.query) {
       const terms = norm(st.query).split(/\s+/).filter(Boolean);
       list = list.filter((a) => { const h = hay(a); return terms.every((t) => h.includes(t)); });
@@ -66,7 +71,7 @@
     const counts = { all: scoped.length };
     statusOf.forEach((s) => { counts[s.key] = (counts[s.key] || 0) + 1; });
     const match = st.statusFilter === 'all' ? scoped : scoped.filter((a) => statusOf.get(a.id).key === st.statusFilter);
-    const filtering = st.statusFilter !== 'all' || !!st.query || st.kinds.length > 0;
+    const filtering = st.statusFilter !== 'all' || !!st.query || st.kinds.length > 0 || !!st.calTypeFilter || !!st.calibratorFilter;
     // 一致したものに、構成の親を文脈として加える（どのセットの中かが分かるように）
     const show = new Map(match.map((a) => [a.id, false]));
     match.forEach((a) => repo.assets.ancestors(a.id).forEach((p) => { if (!show.has(p.id)) show.set(p.id, true); }));
@@ -99,6 +104,8 @@
     const active = [];
     if (st.query) active.push(`検索「${esc(st.query)}」${st.searchScope === 'all' ? '（すべての設置先）' : ''}`);
     if (st.kinds.length) active.push(st.kinds.map((k) => KK.kinds.get(k)?.label).join('・') + 'のみ');
+    if (st.calTypeFilter) active.push(`${KK.calTypes[st.calTypeFilter].label}校正のみ`);
+    if (st.calibratorFilter) active.push(`校正会社：${KK.inherit.companyName(st.calibratorFilter)}`);
     if (st.showRetired) active.push('廃棄を含む');
     return `
       <div class="place">
@@ -220,7 +227,7 @@
       if (t.closest('[data-resize]')) return;
       const chip = t.closest('[data-status]');
       if (chip) { KK.state.set({ statusFilter: KK.state.get().statusFilter === chip.dataset.status && chip.dataset.status !== 'all' ? 'all' : chip.dataset.status }); return; }
-      if (t.closest('[data-clear-filters]')) { KK.state.set({ statusFilter: 'all', query: '', kinds: [], showRetired: false }); KK.bus.emit('filters:cleared'); return; }
+      if (t.closest('[data-clear-filters]')) { KK.state.set({ statusFilter: 'all', query: '', kinds: [], showRetired: false, calTypeFilter: '', calibratorFilter: '' }); KK.bus.emit('filters:cleared'); return; }
       if (t.closest('[data-expand-nav]')) { KK.state.set({ navCollapsed: false }); return; }
       if (t.closest('[data-cta]')) { KK.assetForm.openNew(); return; }
       if (t.closest('[data-add-loc-empty]')) { KK.masters.openLocations(); return; }
@@ -246,7 +253,7 @@
     });
     KK.bus.on('data:changed', render);
     KK.bus.on('state:changed', ({ keys }) => {
-      if (keys.some((k) => ['locationId', 'statusFilter', 'query', 'searchScope', 'selectedId', 'expanded', 'hiddenColumns', 'showRetired', 'kinds', 'navCollapsed', 'sort', 'columnWidths'].includes(k))) render();
+      if (keys.some((k) => ['locationId', 'statusFilter', 'query', 'searchScope', 'selectedId', 'expanded', 'hiddenColumns', 'showRetired', 'kinds', 'calTypeFilter', 'calibratorFilter', 'navCollapsed', 'sort', 'columnWidths'].includes(k))) render();
     });
     KK.bus.on('asset:saved', ({ id }) => { flashId = id; });
     render();

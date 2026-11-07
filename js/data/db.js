@@ -5,13 +5,15 @@
   const KK = window.KK;
 
   const DB_NAME = 'keisoku-kiki-kanri';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2; // 2：会社・型式のストアを追加
   const STORES = {
     locations: {},
     categories: {},
     assets: { indexes: ['parentId', 'locationId'] },
     events: { indexes: ['assetId'] },
     attachments: { indexes: ['assetId'] },
+    companies: {},
+    models: {},
     meta: { keyPath: 'key' }
   };
 

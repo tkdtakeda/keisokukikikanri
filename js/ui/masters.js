@@ -29,6 +29,8 @@
         <div class="field span-3"><label>見分け方（識別キー）</label><select class="input" data-c="identityKey">${KK.identityKeys.list().map((k) => `<option value="${k.id}"${k.id === c.identityKey ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}</select>
           <span class="hint">重複は使用中の個体の中で調べます</span></div>
         <div class="field span-3"><label>校正周期（既定）</label><div class="unit-input"><input class="input" data-c="intervalMonths" inputmode="numeric" value="${esc(c.intervalMonths)}"><span class="unit">か月</span></div></div>
+        <div class="field span-3"><label>校正区分（既定）</label><select class="input" data-c="calType">${Object.entries(KK.calTypes).map(([k, t]) => `<option value="${k}"${(c.calType || 'internal') === k ? ' selected' : ''}>${t.label}</option>`).join('')}</select>
+          <span class="hint">機器・親で上書きできます</span></div>
         <div class="field span-3"><label>測定値の単位（既定）</label><div class="unit-input"><select class="input" data-c="unit">${KK.units.options(c.unit ?? '')}</select>
           <button type="button" class="btn btn--ghost btn--icon" data-open-units title="単位の選択肢を編集"><i class="fa-solid fa-pen-to-square"></i></button></div></div>
         <div class="field span-3"><label>最小表示量（既定）</label><input class="input" data-c="resolution" inputmode="decimal" value="${esc(c.resolution || '')}" placeholder="0.001">
@@ -116,7 +118,7 @@
       const c = t.closest('[data-cat]'); if (c) { selectCat(c.dataset.cat); return; }
       if (t.closest('[data-open-units]')) { readCatForm(); openUnits(); return; }
       if (t.closest('[data-new-cat]')) {
-        editing = { id: uid('c'), name: '新しい分類', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '', fields: [] };
+        editing = { id: uid('c'), name: '新しい分類', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', calType: 'internal', unit: 'mm', resolution: '', fields: [] };
         renderCat(); catWin.querySelector('[data-c="name"]').select(); return;
       }
       if (!editing) return;

@@ -23,14 +23,8 @@
 
     /** 単位と最小表示量。機器で上書きしていなければ分類の値。inherited はどちらが分類由来か */
     resolution(a) {
-      const cat = rules.category(a);
-      const ownRes = a.resolution != null && a.resolution !== '';
-      const ownUnit = a.unit != null;
-      return {
-        resolution: ownRes ? a.resolution : (cat.resolution || ''),
-        unit: ownUnit ? a.unit : (cat.unit ?? ''),
-        inheritedRes: !ownRes, inheritedUnit: !ownUnit
-      };
+      const r = KK.inherit.resolution(a); const u = KK.inherit.unit(a);
+      return { resolution: r.value, unit: u.value, inheritedRes: r.source !== 'asset', inheritedUnit: u.source !== 'asset', resSource: r.source, unitSource: u.source };
     },
     /** 測定値の小数の桁数（最小表示量から）。決まっていなければ null */
     digits(a) { return KK.num.digitsOf(rules.resolution(a).resolution); },
@@ -108,7 +102,7 @@
       Object.assign(err, KK.trace ? KK.trace.validate(input) : {});
       (cat?.fields || []).forEach((f) => {
         const v = input.props?.[f.key];
-        if (f.required && (v === '' || v == null)) err['prop:' + f.key] = '必須です';
+        if (f.required && (v === '' || v == null) && !KK.inherit.prop({ props: {}, modelId: input.modelId }, f.key).value) err['prop:' + f.key] = '必須です';
         const msg = KK.fieldTypes.get(f.type)?.validate?.(v ?? '');
         if (msg) err['prop:' + f.key] = msg;
       });
@@ -136,6 +130,7 @@
       const before = selfId ? repo.assets.get(selfId) : null;
       const today = U.today();
       const parent = input.parentId ? repo.assets.get(input.parentId) : null;
+      const keep = (k, conv, empty) => (input[k] === undefined ? (before?.[k] ?? empty) : conv(input[k]));
       const a = {
         ...(before || { id: U.uid('a'), createdAt: U.nowIso() }),
         categoryId: input.categoryId,
@@ -143,8 +138,14 @@
         parentId: input.parentId || null,
         mgmtNo: (input.mgmtNo || '').trim(),
         serial: (input.serial || '').trim(),
-        model: (input.model || '').trim(),
-        maker: (input.maker || '').trim(),
+        // 型式・会社・校正区分：null は引き継ぎ（型式・親・分類）。フォームが送らなかった項目は元の値を保つ
+        model: keep('model', (v) => (v || '').trim(), ''),
+        maker: keep('maker', (v) => (v || '').trim(), ''),
+        modelId: keep('modelId', (v) => v || null, null),
+        makerId: keep('makerId', (v) => v || null, null),
+        calibratorId: keep('calibratorId', (v) => v || null, null),
+        calType: keep('calType', (v) => v || null, null),
+        range: keep('range', (r) => (r && (KK.num.clean(r.min) || KK.num.clean(r.max)) ? { min: KK.num.clean(r.min) || '', max: KK.num.clean(r.max) || '', unit: r.unit ?? null } : null), null),
         lastCalDate: input.lastCalDate || '',
         intervalMonths: input.intervalMonths === '' || input.intervalMonths == null ? null : Number(input.intervalMonths),
         // 単位・最小表示量：null は分類に従う（'' の単位は「単位なし」を選んだ状態）

@@ -31,18 +31,57 @@
       .sort(R.compareIdentity);
     return '<option value="">なし（単独）</option>' + cands.map((a) => `<option value="${a.id}"${a.id === sel ? ' selected' : ''}>${esc(R.category(a).name)} ${esc(R.identity(a))}</option>`).join('');
   }
-  const makers = () => [...new Set(KK.repo.assets.list().map((a) => a.maker).filter(Boolean))].sort();
+  const I = KK.inherit;
 
-  /** 桁の基準にする「入力中の個体」（まだ保存していない値で表示桁を決める） */
+  /** 桁・引き継ぎの基準にする「入力中の個体」（まだ保存していない値で決める） */
   function ctxAsset(v) {
-    return { categoryId: v.categoryId, parentId: v.parentId, resolution: KK.num.clean(v.resolution || '') || null, unit: v.unit === '__inherit' || v.unit === undefined ? null : v.unit };
+    return {
+      categoryId: v.categoryId, parentId: v.parentId || null, modelId: v.modelId || null,
+      resolution: KK.num.clean(v.resolution || '') || null, unit: v.unit === '__inherit' || v.unit === undefined ? null : v.unit,
+      makerId: v.makerId || null, calibratorId: v.calibratorId || null, calType: v.calType || null,
+      range: v.range && (v.range.min || v.range.max) ? v.range : null, props: v.props || {}
+    };
   }
+  /** 自分の値を外したときに引き継ぐ値（placeholder に出す） */
+  function inheritedCtx(v) {
+    return { ...ctxAsset(v), resolution: null, unit: null, range: null, makerId: null, calibratorId: null, calType: null, props: {} };
+  }
+  const fromText = (r, text) => (text ? `${I.SOURCE[r.source] || ''}：${text}` : '');
   /** 「1 → 1.000 mm」の表示の例 */
   function resSample(v) {
     const a = ctxAsset(v);
     const d = R.digits(a); const unit = R.resolution(a).unit;
     if (d == null) return '<span class="sub">最小表示量を決めると、桁をそろえて表示します</span>';
     return `<b>1</b> → <b>${esc(KK.num.format('1', d).text)}</b>${unit ? ' ' + esc(unit) : ''}`;
+  }
+
+  /** 型式・メーカー・測定範囲・単位・最小表示量・校正区分・校正会社 */
+  function modelSectionHtml(v, cat) {
+    const own = ctxAsset(v); const inh = inheritedCtx(v);
+    const model = KK.repo.models.get(v.modelId);
+    const mk = I.maker(inh); const cal = I.calibrator(inh); const ct = I.calType(inh);
+    const r = I.range(inh); const res = I.resolution(inh); const un = I.unit(inh);
+    const external = I.calType(own).value === 'external';
+    const unitLabel = KK.units.label(I.unit(own).value);
+    return `
+        <div class="field span-4"><label>型式 <span class="sub">（型番・名称。一覧にない型番はその場で登録できます）</span></label>
+          ${KK.combo.html({ name: 'model', field: 'modelId', id: v.modelId, label: I.modelLabel(model), placeholder: '型番で探す（空欄可）' })}
+          ${!model && v.model ? `<span class="hint">旧い記述：${esc(v.model)}</span>` : ''}</div>
+        <div class="field span-2"><label>メーカー</label>
+          ${KK.combo.html({ name: 'maker', field: 'makerId', id: v.makerId, label: I.companyName(v.makerId), placeholder: fromText(mk, I.companyName(mk.value)) || '会社名で探す' })}</div>
+        <div class="field span-2"><label>測定範囲</label><div class="range-row">
+          <input class="input" data-field="rangeMin" inputmode="decimal" value="${esc(v.range?.min ?? '')}" placeholder="${esc(r.value?.min ?? '下限')}" data-next><span>〜</span>
+          <input class="input" data-field="rangeMax" inputmode="decimal" value="${esc(v.range?.max ?? '')}" placeholder="${esc(r.value?.max ?? '上限')}" data-next><span class="unit">${esc(unitLabel === KK.units.NONE_LABEL ? '' : unitLabel)}</span></div>
+          <span class="hint">${r.value ? `空欄なら${I.SOURCE[r.source]}の値（${esc(I.rangeText(inh))}）` : '例：0〜25、0.01〜0.5'}</span></div>
+        <div class="field span-2"><label>測定値の単位</label><select class="input" data-field="unit" data-next>${KK.units.options(v.unit ?? null, { inherit: `${I.SOURCE[un.source]}に従う（${KK.units.label(un.value)}）` })}</select></div>
+        <div class="field span-2"><label>最小表示量</label><input class="input" data-field="resolution" inputmode="decimal" value="${esc(v.resolution || '')}" placeholder="${esc(res.value || '0.001')}" data-next>
+          <span class="hint" data-res-sample>${resSample(v)}${res.value ? `（空欄なら${I.SOURCE[res.source]}の ${esc(res.value)}）` : ''}</span></div>
+        <div class="field span-2"><label>校正区分</label><select class="input" data-field="calType" data-next>
+          <option value="">引き継ぐ（${I.SOURCE[ct.source]}：${KK.calTypes[ct.value].label}）</option>
+          ${Object.entries(KK.calTypes).map(([k, t]) => `<option value="${k}"${v.calType === k ? ' selected' : ''}>${t.label}</option>`).join('')}</select></div>
+        <div class="field span-4"><label>校正会社 ${external ? '' : '<span class="sub">（社内校正のため不要）</span>'}</label>
+          ${KK.combo.html({ name: 'calibrator', field: 'calibratorId', id: v.calibratorId, label: I.companyName(v.calibratorId), disabled: !external,
+            placeholder: external ? (fromText(cal, I.companyName(cal.value)) || '会社名で探す') : '社内校正' })}</div>`;
   }
 
   // ── フォーム本体 ──
@@ -62,18 +101,14 @@
         <div class="field span-2"><label>管理番号${req('mgmtNo')}</label><input class="input" data-field="mgmtNo" value="${esc(v.mgmtNo)}" data-next></div>
         <div class="field span-2"><label>製造番号${req('serial')}</label><input class="input" data-field="serial" value="${esc(v.serial)}" data-next></div>
         <div class="field span-2"><label>親（構成）</label><select class="input" data-field="parentId" data-next>${parentOptions(parent ? parent.locationId : v.locationId, v.parentId, ctx.id)}</select></div>
-        <div class="field span-4"><label>型式・仕様</label><input class="input" data-field="model" value="${esc(v.model)}" data-next></div>
-        <div class="field span-2"><label>メーカー</label><input class="input" data-field="maker" value="${esc(v.maker)}" list="makerList" data-next>
-          <datalist id="makerList">${makers().map((m) => `<option value="${esc(m)}">`).join('')}</datalist></div>
-        <div class="field span-2"><label>測定値の単位</label><select class="input" data-field="unit" data-next>${KK.units.options(v.unit ?? null, { inherit: `分類に従う（${KK.units.label(cat?.unit ?? '')}）` })}</select></div>
-        <div class="field span-2"><label>最小表示量</label><input class="input" data-field="resolution" inputmode="decimal" value="${esc(v.resolution || '')}" placeholder="${esc(cat?.resolution || '0.001')}" data-next>
-          <span class="hint">${cat?.resolution ? `空欄なら分類の ${esc(cat.resolution)}` : '分類に既定がありません'}</span></div>
-        <div class="field span-2"><label>表示の例</label><div class="res-sample" data-res-sample>${resSample(v)}</div></div>
+        ${modelSectionHtml(v, cat)}
         <div class="field span-3"><label>前回校正日</label>${KK.dateInputHtml('lastCalDate', v.lastCalDate)}
           <span class="hint">${parent ? '空欄なら親の校正日を引き継ぎます' : '空欄なら「校正日なし」として表示します'}</span></div>
         <div class="field span-1"><label>周期</label><div class="unit-input"><input class="input" data-field="intervalMonths" inputmode="numeric" value="${esc(v.intervalMonths ?? '')}" placeholder="${defInterval}" data-next><span class="unit">か月</span></div></div>
         <div class="field span-2"><label>状態</label><select class="input" data-field="state" data-next>${Object.entries(KK.assetStates).map(([k, s]) => `<option value="${k}"${k === (v.state || 'active') ? ' selected' : ''}>${s.label}</option>`).join('')}</select></div>
-        <div class="field span-6"><label>校正に使った標準器 <span class="sub">（前回校正日の校正で使ったもの）</span></label><div data-std-host></div></div>
+        ${I.calType(ctxAsset(v)).value === 'external'
+          ? '<div class="field span-6"><label>校正に使った標準器</label><span class="hint"><i class="fa-solid fa-truck-fast"></i> 外部校正のため、標準器は記録しません（校正会社の成績書を「写真・書類」に添付してください）</span></div>'
+          : '<div class="field span-6"><label>校正に使った標準器 <span class="sub">（前回校正日の校正で使ったもの）</span></label><div data-std-host></div></div>'}
         ${(cat?.fields || []).length ? `<div class="form-sep">${esc(cat.name)} の項目 <button type="button" class="btn btn--ghost btn--small" data-edit-cat title="この分類の項目を編集"><i class="fa-solid fa-shapes"></i>項目を編集</button></div>` : ''}
         ${(cat?.fields || []).map((f) => `<div class="field ${f.type === 'longtext' ? 'span-6' : 'span-2'}"><label>${esc(f.label)}${f.required ? '<span class="req">*</span>' : ''}</label>
           ${KK.fieldTypes.get(f.type)?.input(f, v.props?.[f.key] ?? '', ctxAsset(v)) || ''}</div>`).join('')}
@@ -106,7 +141,10 @@
       if (el) props[fd.key] = KK.fieldTypes.get(fd.type)?.read(el) ?? el.value;
     });
     v.props = props;
-    v.calStandards = ctx.std.selected.slice();
+    v.range = { min: v.rangeMin ?? '', max: v.rangeMax ?? '', unit: null };
+    delete v.rangeMin; delete v.rangeMax;
+    // 外部校正では標準器を記録しない
+    v.calStandards = I.calType(ctxAsset(v)).value === 'external' ? [] : ctx.std.selected.slice();
     if (v.parentId) v.locationId = KK.repo.assets.get(v.parentId)?.locationId || v.locationId;
     if (v.intervalMonths !== '') v.intervalMonths = String(v.intervalMonths).normalize('NFKC');
     return v;
@@ -132,19 +170,37 @@
     const focusKey = document.activeElement?.dataset?.field;
     win.querySelector('.floating__body').innerHTML = bodyHtml(v);
     mountStd();
+    applyPlaceholders(v);
     win.querySelectorAll('[data-num]').forEach(formatNum);
     if (focusKey) win.querySelector(`[data-field="${focusKey}"]`)?.focus();
   }
 
+  /** 分類の項目：空欄なら型式の値を placeholder に出す */
+  function applyPlaceholders(v) {
+    const inh = inheritedCtx(v);
+    const cat = KK.repo.categories.get(v.categoryId);
+    (cat?.fields || []).forEach((f) => {
+      const el = win.querySelector(`[data-prop="${CSS.escape(f.key)}"]`); if (!el || el.tagName === 'SELECT' || el.hasAttribute('data-date')) return;
+      const r = I.prop(inh, f.key);
+      if (!r.value) return;
+      const text = f.type === 'number' ? KK.num.format(r.value, KK.num.fieldDigits(f, ctxAsset(v))).text : r.value;
+      el.placeholder = `${I.SOURCE[r.source]}：${text}`;
+    });
+  }
+
   let stdCtl = null;
   function mountStd() {
-    stdCtl = KK.stdPicker.mount(win.querySelector('[data-std-host]'), ctx.std, {
+    const host = win.querySelector('[data-std-host]');
+    if (!host) { stdCtl = null; return; }
+    stdCtl = KK.stdPicker.mount(host, ctx.std, {
       getDate: () => KK.readDateInput(win.querySelector('[data-field="lastCalDate"]')),
       selfId: ctx.id
     });
   }
 
   async function submit() {
+    const bad = KK.combo.unmatched(win);
+    if (bad) { bad.focus(); KK.toast('一覧にない名前があります。候補から選ぶか、「新しく登録」を選んでください', { kind: 'warn' }); return; }
     const v = read();
     const err = R.validate(v, ctx.id);
     const first = showErrors(err);
@@ -180,7 +236,13 @@
     win = KK.floating({ id: 'assetForm', title, icon: mode === 'new' ? 'fa-plus' : 'fa-pen', width: 600, body: '', foot: footHtml() });
     win.querySelector('.floating__body').innerHTML = bodyHtml(v);
     mountStd();
+    applyPlaceholders(v);
     KK.wireFormAssist(win);
+    KK.combo.wire(win, {
+      model: { items: () => KK.directory.modelItems(read().categoryId), create: (t) => KK.directory.createModel(read().categoryId, t, { makerId: read().makerId || null }) },
+      maker: { items: () => KK.directory.companyItems('maker'), create: (t) => KK.directory.createCompany(t) },
+      calibrator: { items: () => KK.directory.companyItems('calibrator'), create: (t) => KK.directory.createCompany(t) }
+    });
     wire();
     setTimeout(() => (mode === 'new' && v.categoryId ? win.querySelector(`[data-field="${KK.identityKeys.get(KK.repo.categories.get(v.categoryId)?.identityKey)?.required[0] || 'mgmtNo'}"]`) : win.querySelector('[data-field="categoryId"]'))?.focus(), 0);
   }
@@ -197,8 +259,9 @@
     win.addEventListener('focusout', (e) => { if (e.target.matches('[data-num]')) formatNum(e.target); });
     win.addEventListener('change', (e) => {
       const k = e.target.dataset.field;
-      if (k === 'categoryId' || k === 'parentId' || k === 'locationId' || k === 'resolution' || k === 'unit') {
+      if (['categoryId', 'parentId', 'locationId', 'resolution', 'unit', 'modelId', 'calType'].includes(k)) {
         const v = read();
+        if (k === 'categoryId' && v.modelId && KK.repo.models.get(v.modelId)?.categoryId !== v.categoryId) v.modelId = '';
         if (k === 'parentId' && v.parentId) v.locationId = KK.repo.assets.get(v.parentId).locationId;
         rerender(v);
       }

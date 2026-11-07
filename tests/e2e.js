@@ -96,13 +96,15 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   await page.fill('[data-field="mgmtNo"]', 'M-009');
   await page.keyboard.press('Enter');
   check('Enter で次の欄へ移る', await page.evaluate(() => document.activeElement.dataset.field) === 'serial');
-  await page.fill('[data-field="model"]', 'MDC-25MX');
+  await page.fill('[data-combo="model"] [data-combo-input]', 'sm-25d');
+  await page.keyboard.press('Enter');
+  check('型式を打ちながら探して選べる（大文字小文字を区別しない）', (await page.inputValue('[data-field="modelId"]')) !== '' && (await page.inputValue('[data-combo="model"] [data-combo-input]')).startsWith('SM-25D'));
   const year = page.locator('[data-field="lastCalDate"] input').nth(0);
   await year.click(); await page.keyboard.type('2026');
   check('年 4 桁で月へ移る', await page.evaluate(() => document.activeElement.getAttribute('aria-label')) === '月');
   await page.keyboard.type('0315');
   check('月 2 桁で日へ移り、日の後は次の欄へ', await page.evaluate(() => document.activeElement.dataset.field) === 'intervalMonths');
-  await page.fill('[data-prop="range"]', '0-25 mm');
+  check('測定範囲は空欄なら型式の値を引き継ぐ（placeholder に表示）', await page.getAttribute('[data-field="rangeMax"]', 'placeholder') === '25');
   await shot('04-form');
   await page.click('[data-submit]');
   await page.waitForSelector('#assetForm', { state: 'detached' });
@@ -275,6 +277,97 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   check('分類と違う値の機器だけ上書きにする', mig.a1 == null && mig.a3 === '0.001');
   await KK(async () => { const K = window.KK; await K.repo.commit(['old-a1', 'old-a2', 'old-a3'].map((id) => K.repo.del('assets', id)).concat([K.repo.del('categories', 'old-cat')]), 'test'); });
 
+  // ── 型式・会社・校正区分の引き継ぎ ──
+  await page.click('.locnav__item:has-text("標準室")');
+  const setRow2 = page.locator('tr:has(b.ident:text-is("BS-198812"))');
+  if (await setRow2.locator('.fa-caret-right').count()) await setRow2.locator('[data-toggle]').click();
+  await page.locator('tr:has(b.ident:text-is("BS-198812-01"))').click();
+  let spec = (await page.locator('.detail .props').nth(1).textContent()).replace(/\s+/g, ' ');
+  check('子は親の校正区分・校正会社・メーカーを引き継ぐ（札「親」）', spec.includes('外部親') && spec.includes('サンプル校正サービス親') && spec.includes('サンプル精機親'), spec.slice(0, 160));
+  await page.locator('tr:has(b.ident:text-is("BS-198812-08"))').click();
+  spec = (await page.locator('.detail .props').nth(1).textContent()).replace(/\s+/g, ' ');
+  check('特定の 1 つだけ社内に上書きできる（校正会社は出ない）', spec.includes('校正区分 社内') && !spec.includes('校正会社'), spec.slice(0, 200));
+  await page.locator('tr:has(b.ident:text-is("BS-198812"))').click();
+  await page.click('.detail [data-open-company]');
+  await page.waitForSelector('#companyCard');
+  const card = await page.locator('#companyCard').textContent();
+  check('会社名から会社の小窓が開き、担当者と電話が出る', card.includes('山田 一郎') && await page.locator('#companyCard a[href^="tel:"]').count() >= 2);
+  check('会社の小窓にメーカー・校正会社としての台数が出る', /メーカーとして \d+ 台/.test(card) && card.includes('校正会社として'));
+  await page.keyboard.press('Escape');
+
+  // ── 型式の編集が機器に反映される ──
+  await page.click('.locnav__item:has-text("第1加工ライン")');
+  const m001 = await KK(() => window.KK.repo.assets.list().find((a) => a.mgmtNo === 'M-001' && window.KK.repo.locations.get(a.locationId).name === '第1加工ライン').modelId);
+  await KK((id) => window.KK.directoryUi.openModels(id), m001);
+  await page.waitForSelector('#mdWin');
+  await page.fill('[data-md-f="rangeMax"]', '30'); await page.click('[data-md-save]');
+  await page.waitForTimeout(200);
+  check('型式の測定範囲を直すと、その型式の機器すべてに反映される', (await page.locator('tr:has(b.ident:text-is("M-001"))').first().textContent()).includes('0〜30 mm'));
+  check('使用中の型式は削除できず理由が出る', await page.locator('[data-md-del]').isDisabled());
+  await page.keyboard.press('Escape');
+
+  // ── 校正会社で絞り込む ──
+  await page.click('.locnav__item--all');
+  await page.click('.rail__btn[data-panel="filter"]');
+  const calId = await KK(() => window.KK.repo.companies.list().find((c) => c.name === 'サンプル校正サービス').id);
+  await page.selectOption('[data-calibrator]', calId);
+  await page.waitForTimeout(150);
+  const calRows = await KK(() => window.KK.ledger.rows());
+  check('校正会社で絞り込める（外部校正の機器だけ）', calRows.length > 0 && await KK(() => window.KK.ledger.rows().every((id) => { const a = window.KK.repo.assets.get(id); return window.KK.inherit.calType(a).value === 'external'; })), `${calRows.length} 行`);
+  await page.click('[data-clear-filters]');
+  await page.click('.rail__btn[data-panel="filter"]');
+
+  // ── 登録の窓：外部校正にすると校正会社が入力でき、会社をその場で登録できる ──
+  await page.click('.locnav__item:has-text("第2加工ライン")');
+  await page.click('#cta'); await page.waitForSelector('#assetForm');
+  await page.selectOption('[data-field="categoryId"]', 'cat-dial');
+  check('社内校正では校正会社は入力できない', await page.locator('[data-combo="calibrator"] [data-combo-input]').isDisabled());
+  await page.selectOption('[data-field="calType"]', 'external');
+  await page.waitForTimeout(100);
+  check('外部校正にすると標準器の欄が案内に替わる', await page.locator('[data-std-host]').count() === 0 && (await page.locator('#assetForm').textContent()).includes('外部校正のため、標準器は記録しません'));
+  await page.fill('[data-combo="calibrator"] [data-combo-input]', 'テスト校正所');
+  await page.click('.combo__item--create');
+  await page.waitForTimeout(150);
+  check('一覧にない会社をその場で登録して選べる', await KK(() => window.KK.repo.companies.list().some((c) => c.name === 'テスト校正所')) && (await page.inputValue('[data-field="calibratorId"]')) !== '');
+  await page.fill('[data-field="mgmtNo"]', 'D-050');
+  await page.fill('[data-combo="maker"] [data-combo-input]', '存在しない会社');
+  await page.locator('[data-field="rangeMin"]').focus(); await page.waitForTimeout(200);
+  await page.click('[data-submit]');
+  check('一覧にない名前のままでは登録できず理由が出る', (await toastText()).includes('一覧にない名前'));
+  await page.fill('[data-combo="maker"] [data-combo-input]', '');
+  await page.locator('[data-field="rangeMin"]').focus(); await page.waitForTimeout(200);
+  await page.click('[data-submit]');
+  await page.waitForSelector('#assetForm', { state: 'detached' });
+  check('外部校正・校正会社を指定して登録できる', await KK(() => { const a = window.KK.repo.assets.list().find((x) => x.mgmtNo === 'D-050'); return a.calType === 'external' && window.KK.inherit.calibratorName(a) === 'テスト校正所'; }));
+  await shot('10-company');
+
+  // ── 旧い形（メーカー・型式・測定範囲が文字）の移し替え ──
+  await KK(async () => {
+    const K = window.KK; const loc = K.repo.locations.list()[0].id;
+    const base = { locationId: loc, serial: '', lastCalDate: '', state: 'active', unit: null, resolution: null };
+    await K.repo.commit([
+      K.repo.put('categories', { id: 'old2', name: '旧ノギス', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '0.01', fields: [{ key: 'rng', label: '測定範囲', type: 'text' }] }),
+      K.repo.put('assets', { ...base, id: 'o1', categoryId: 'old2', mgmtNo: 'O-1', model: 'XC-150 デジタル', maker: '旧メーカー', props: { rng: '0-150 mm' } }),
+      K.repo.put('assets', { ...base, id: 'o2', categoryId: 'old2', mgmtNo: 'O-2', model: 'XC-150 デジタル', maker: '旧メーカー', props: { rng: '0-150 mm' } }),
+      K.repo.put('assets', { ...base, id: 'o3', categoryId: 'old2', mgmtNo: 'O-3', model: 'XC-150 デジタル', maker: '旧メーカー', props: { rng: '0〜100mm' } }),
+      K.repo.put('assets', { ...base, id: 'o4', categoryId: 'old2', mgmtNo: 'O-4', model: '', maker: '旧メーカー', props: { rng: '0.01～0.5' } })
+    ], 'test');
+    await K.repo.settings.set('schemaVersion', 2);
+  });
+  await page.reload(); await page.waitForSelector('body.is-ready');
+  const m3 = await KK(() => {
+    const K = window.KK; const g = (id) => K.repo.assets.get(id);
+    const md = K.repo.models.get(g('o1').modelId);
+    return { cos: K.repo.companies.list().filter((c) => c.name === '旧メーカー').length, same: g('o1').modelId === g('o2').modelId && g('o2').modelId === g('o3').modelId,
+      modelNo: md.modelNo, name: md.name, maker: K.inherit.makerName(g('o1')), r1: K.inherit.rangeText(g('o1')), r3: K.inherit.rangeText(g('o3')), r3src: K.inherit.range(g('o3')).source,
+      r4: K.inherit.rangeText(g('o4')), m4: K.inherit.makerName(g('o4')), fields: K.repo.categories.get('old2').fields.length, calType: K.repo.categories.get('old2').calType };
+  });
+  check('メーカーの文字を会社にまとめる（同じ名前は 1 社）', m3.cos === 1 && m3.maker === '旧メーカー' && m3.m4 === '旧メーカー', JSON.stringify(m3));
+  check('同じ型式の文字は 1 件の型式にし、型番を分ける', m3.same && m3.modelNo === 'XC-150' && m3.name === 'デジタル');
+  check('測定範囲の文字を数値にし、型式と違う機器だけ上書きにする', m3.r1 === '0〜150 mm' && m3.r3 === '0〜100 mm' && m3.r3src === 'asset' && m3.r4 === '0.01〜0.5 mm');
+  check('文字の測定範囲の項目を外し、分類に校正区分の既定を入れる', m3.fields === 0 && m3.calType === 'internal');
+  await KK(async () => { const K = window.KK; const ids = ['o1', 'o2', 'o3', 'o4']; await K.repo.commit([...ids.map((id) => K.repo.del('assets', id)), K.repo.del('categories', 'old2')], 'test'); });
+
   // ── バックアップ（書き出し→読み込み） ──
   await page.click('.rail__btn[data-panel="backup"]');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-export]')]);
@@ -290,7 +383,9 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   await page.click('[data-clear-sample]');
   await page.waitForTimeout(300);
   const left = await KK(() => window.KK.repo.assets.list().map((a) => a.serial || a.mgmtNo));
-  check('サンプルだけが消え、自分で登録した個体は残る', left.length === 4 && left.includes('M-077') && left.includes('M-009') && left.includes('BS-198812-20'), left.join(', '));
+  check('サンプルだけが消え、自分で登録した個体は残る', left.length === 5 && left.includes('D-050') && left.includes('M-077') && left.includes('M-009') && left.includes('BS-198812-20'), left.join(', '));
+  check('自分の機器が使う型式・会社はサンプルを消しても残る', await KK(() => { const K = window.KK; const a = K.repo.assets.list().find((x) => x.mgmtNo === 'M-009'); return !!K.repo.models.get(a.modelId) && K.inherit.makerName(a) === 'サンプル精機'; }));
+  check('使われていないサンプルの会社は消える', await KK(() => !window.KK.repo.companies.list().some((c) => c.name === 'サンプルゲージ')));
   check('サンプルのセットに入れた子は親が外れて残る', await KK(() => window.KK.repo.assets.list().every((a) => !a.parentId)));
   check('利用者の個体がある設置先は残る', await KK(() => window.KK.repo.locations.list().some((l) => l.name === '第2加工ライン')));
   await shot('05-after-clear');
