@@ -36,12 +36,21 @@
     read: (el) => el.value.trim(),
     format: (v) => esc(v)
   });
+  // 数値：打ったとおりの文字で保存し、表示桁に足りない 0 を補って見せる（ctx は桁の基準になる個体）
   KK.fieldTypes.register({
     id: 'number', order: 2, label: '数値',
-    input: (f, v) => `<div class="unit-input"><input class="input" inputmode="decimal" ${attrs(f)} value="${esc(v)}" data-next>${f.unit ? `<span class="unit">${esc(f.unit)}</span>` : ''}</div>`,
-    read: (el) => { const s = el.value.trim().normalize('NFKC'); return s === '' ? '' : (Number.isFinite(Number(s)) ? Number(s) : s); },
-    validate: (v) => (v === '' || typeof v === 'number' ? '' : '数値で入力してください'),
-    format: (v, f) => (v === '' || v == null ? '' : `${esc(v)}${f.unit ? ' ' + esc(f.unit) : ''}`)
+    input: (f, v, ctx) => {
+      const d = KK.num.fieldDigits(f, ctx);
+      return `<div class="unit-input"><input class="input" inputmode="decimal" ${attrs(f)} data-num data-digits="${d ?? ''}" value="${esc(KK.num.format(v, d).text)}" data-next>${f.unit ? `<span class="unit">${esc(f.unit)}</span>` : ''}</div>`;
+    },
+    read: (el) => { const s = KK.num.clean(el.value); return s === null ? el.value.trim() : s; },
+    validate: (v) => (v === '' || v == null || KK.num.clean(v) !== null ? '' : '数値で入力してください'),
+    format: (v, f, a) => {
+      if (v === '' || v == null) return '';
+      const d = KK.num.fieldDigits(f, a);
+      const r = KK.num.format(v, d);
+      return `${esc(r.text)}${f.unit ? ' ' + esc(f.unit) : ''}${r.excess ? ` <i class="fa-solid fa-triangle-exclamation" style="color:var(--color-warn)" title="${esc(KK.num.excessText(d))}"></i>` : ''}`;
+    }
   });
   KK.fieldTypes.register({
     id: 'select', order: 3, label: '選択肢',
@@ -83,30 +92,30 @@
   // ── 既定の分類（初回起動時に作成。利用者が自由に編集できる） ──
   const F = (key, label, type = 'text', extra = {}) => ({ key, label, type, ...extra });
   KK.defaultCategories = [
-    { id: 'cat-micro', name: 'マイクロメータ', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo',
-      fields: [F('range', '測定範囲'), F('resolution', '最小表示量', 'number', { unit: 'mm' }), F('tolerance', '器差許容値', 'text')] },
-    { id: 'cat-caliper', name: 'ノギス', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo',
-      fields: [F('range', '測定範囲'), F('resolution', '最小表示量', 'number', { unit: 'mm' }), F('display', '表示方式', 'select', { options: ['デジタル', 'ダイヤル', 'バーニヤ'] })] },
-    { id: 'cat-feeler', name: 'すきまゲージ', kind: 'measure', intervalMonths: 6, identityKey: 'locationNo',
-      fields: [F('leaves', '枚数', 'number', { unit: '枚' }), F('range', '厚さ範囲')] },
-    { id: 'cat-dial', name: 'ダイヤルゲージ', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo',
-      fields: [F('range', '測定範囲'), F('resolution', '目量', 'number', { unit: 'mm' })] },
-    { id: 'cat-gbset', name: 'ブロックゲージセット', kind: 'standard', intervalMonths: 24, identityKey: 'serial',
-      fields: [F('grade', '等級', 'select', { options: ['K級', '0級', '1級', '2級'] }), F('pieces', '個数', 'number', { unit: '個' }), F('certNo', '校正証明書番号')] },
-    { id: 'cat-gb', name: 'ブロックゲージ', kind: 'standard', intervalMonths: 24, identityKey: 'serial',
-      fields: [F('nominal', '呼び寸法', 'number', { unit: 'mm' }), F('deviation', '寸法差', 'number', { unit: 'µm' })] },
-    { id: 'cat-calmicro', name: '校正用マイクロメータ', kind: 'standard', intervalMonths: 12, identityKey: 'serial',
+    { id: 'cat-micro', name: 'マイクロメータ', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '0.001',
+      fields: [F('range', '測定範囲'), F('tolerance', '器差許容値（±）', 'number', { unit: 'µm', digits: '1' })] },
+    { id: 'cat-caliper', name: 'ノギス', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '0.01',
+      fields: [F('range', '測定範囲'), F('display', '表示方式', 'select', { options: ['デジタル', 'ダイヤル', 'バーニヤ'] })] },
+    { id: 'cat-feeler', name: 'すきまゲージ', kind: 'measure', intervalMonths: 6, identityKey: 'locationNo', unit: 'mm', resolution: '0.01',
+      fields: [F('leaves', '枚数', 'number', { unit: '', digits: '0' }), F('range', '厚さ範囲')] },
+    { id: 'cat-dial', name: 'ダイヤルゲージ', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '0.01',
+      fields: [F('range', '測定範囲')] },
+    { id: 'cat-gbset', name: 'ブロックゲージセット', kind: 'standard', intervalMonths: 24, identityKey: 'serial', unit: 'mm', resolution: '0.0001',
+      fields: [F('grade', '等級', 'select', { options: ['K級', '0級', '1級', '2級'] }), F('pieces', '個数', 'number', { unit: '', digits: '0' }), F('certNo', '校正証明書番号')] },
+    { id: 'cat-gb', name: 'ブロックゲージ', kind: 'standard', intervalMonths: 24, identityKey: 'serial', unit: 'mm', resolution: '0.0001',
+      fields: [F('nominal', '呼び寸法', 'number', { unit: 'mm', digits: 'asset' }), F('deviation', '寸法差', 'number', { unit: 'µm', digits: '2' })] },
+    { id: 'cat-calmicro', name: '校正用マイクロメータ', kind: 'standard', intervalMonths: 12, identityKey: 'serial', unit: 'mm', resolution: '0.001',
       fields: [F('range', '測定範囲'), F('certNo', '校正証明書番号')] },
-    { id: 'cat-calfeeler', name: '校正用すきまゲージ', kind: 'standard', intervalMonths: 12, identityKey: 'serial',
+    { id: 'cat-calfeeler', name: '校正用すきまゲージ', kind: 'standard', intervalMonths: 12, identityKey: 'serial', unit: 'mm', resolution: '0.001',
       fields: [F('range', '厚さ範囲'), F('certNo', '校正証明書番号')] },
-    { id: 'cat-tensile', name: '引張試験機', kind: 'test', intervalMonths: 12, identityKey: 'serial',
-      fields: [F('capacity', '容量', 'number', { unit: 'kN' }), F('grade', '等級', 'select', { options: ['0.5級', '1級', '2級'] })] },
-    { id: 'cat-force', name: '力計', kind: 'test', intervalMonths: 12, identityKey: 'serial',
-      fields: [F('capacity', '容量', 'number', { unit: 'kN' })] },
-    { id: 'cat-loadcell', name: 'ロードセル', kind: 'test', intervalMonths: 12, identityKey: 'serial',
-      fields: [F('capacity', '定格容量', 'number', { unit: 'kN' })] },
-    { id: 'cat-ext', name: '伸び計', kind: 'test', intervalMonths: 12, identityKey: 'serial',
-      fields: [F('gauge', '標点距離', 'number', { unit: 'mm' }), F('stroke', 'ストローク', 'number', { unit: 'mm' })] }
+    { id: 'cat-tensile', name: '引張試験機', kind: 'test', intervalMonths: 12, identityKey: 'serial', unit: 'kN', resolution: '0.01',
+      fields: [F('capacity', '容量', 'number', { unit: 'kN', digits: '0' }), F('grade', '等級', 'select', { options: ['0.5級', '1級', '2級'] })] },
+    { id: 'cat-force', name: '力計', kind: 'test', intervalMonths: 12, identityKey: 'serial', unit: 'kN', resolution: '0.01',
+      fields: [F('capacity', '容量', 'number', { unit: 'kN', digits: '0' })] },
+    { id: 'cat-loadcell', name: 'ロードセル', kind: 'test', intervalMonths: 12, identityKey: 'serial', unit: 'kN', resolution: '0.01',
+      fields: [F('capacity', '定格容量', 'number', { unit: 'kN', digits: '0' })] },
+    { id: 'cat-ext', name: '伸び計', kind: 'test', intervalMonths: 12, identityKey: 'serial', unit: 'mm', resolution: '0.001',
+      fields: [F('gauge', '標点距離', 'number', { unit: 'mm', digits: '0' }), F('stroke', 'ストローク', 'number', { unit: 'mm', digits: '0' })] }
   ];
 
   /** 個体の共通項目（分類によらず持つ）。表・フォーム・詳細の並び順の元 */

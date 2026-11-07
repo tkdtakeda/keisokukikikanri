@@ -218,6 +218,63 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   check('付け替えを元に戻せる', await KK(() => window.KK.repo.locations.path(window.KK.repo.locations.list().find((l) => l.name === '組立ライン').id)) === '製造部 › 組立課 › 組立ライン');
   await page.keyboard.press('Escape');
 
+  // ── 表示桁（最小表示量）と単位 ──
+  await page.click('.locnav__item:has-text("第1加工ライン")');
+  await page.locator('tr:has(b.ident:text-is("M-001"))').click();
+  const props = await page.locator('.detail .props').nth(1).textContent();
+  check('詳細に最小表示量（分類の既定）が出る', props.includes('0.001 mm') && props.includes('分類の既定'));
+  check('数値の項目は項目の桁で表示する（2 → 2.0 µm）', props.includes('2.0 µm'));
+  await page.click('.locnav__item:has-text("組立ライン")');
+  check('上書きした機器は表に「上書き」が出る', (await page.locator('tr:has(b.ident:text-is("M-005"))').textContent()).replace(/\s+/g, ' ').includes('0.01 mm 上書き'));
+  await page.click('#cta');
+  await page.waitForSelector('#assetForm');
+  await page.selectOption('[data-field="categoryId"]', 'cat-micro');
+  check('表示の例が分類の桁で出る（1 → 1.000 mm）', (await page.locator('[data-res-sample]').textContent()).includes('1.000') );
+  await page.fill('[data-prop="tolerance"]', '2'); await page.locator('[data-prop="tolerance"]').press('Tab');
+  check('欄を出ると桁をそろえる（2 → 2.0）', await page.inputValue('[data-prop="tolerance"]') === '2.0');
+  await page.fill('[data-prop="tolerance"]', '2.05'); await page.locator('[data-prop="tolerance"]').press('Tab');
+  check('桁を超えた入力は丸めずに残し、警告を出す', await page.inputValue('[data-prop="tolerance"]') === '2.05' && (await page.locator('#assetForm .field-warn').textContent()).includes('丸めずに'));
+  await page.fill('[data-field="resolution"]', '0.01'); await page.locator('[data-field="resolution"]').press('Tab');
+  await page.waitForTimeout(100);
+  check('最小表示量を上書きすると表示の例が変わる（1 → 1.00）', (await page.locator('[data-res-sample]').textContent()).includes('1.00') && !(await page.locator('[data-res-sample]').textContent()).includes('1.000'));
+  await page.fill('[data-field="mgmtNo"]', 'M-077');
+  await page.click('[data-submit]');
+  await page.waitForSelector('#assetForm', { state: 'detached' });
+  check('上書きと、打ったとおりの値が保存される', await KK(() => { const a = window.KK.repo.assets.list().find((x) => x.mgmtNo === 'M-077'); return a.resolution === '0.01' && a.unit === null && a.props.tolerance === '2.05'; }));
+
+  // ── 単位の選択肢 ──
+  await page.click('.rail__btn[data-panel="master"]'); await page.click('[data-open-cat]');
+  await page.waitForSelector('#catWin');
+  await page.click('[data-open-units]');
+  await page.waitForSelector('#unitWin');
+  check('既定の単位に m と単位なしがある', await KK(() => { const l = window.KK.units.list(); return l.includes('m') && l.includes(''); }));
+  await page.fill('[data-unit-new]', 'ｍＮ'); await page.press('[data-unit-new]', 'Enter');
+  await page.waitForTimeout(150);
+  check('単位を追加でき、全角は半角にそろう', await KK(() => window.KK.units.list().includes('mN')));
+  check('追加した単位が分類の選択肢に出る', (await page.locator('#catWin [data-c="unit"] option').allTextContents()).includes('mN'));
+  check('使っている単位は削除できず理由が出る', await page.locator('[data-unit-del="mm"]').isDisabled() && (await page.locator('[data-unit-del="mm"]').getAttribute('title')).includes('使っている'));
+  await page.click('[data-unit-del="mN"]'); await page.waitForTimeout(150);
+  check('使っていない単位は削除できる', await KK(() => !window.KK.units.list().includes('mN')));
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+  await page.click('.rail__btn[data-panel="master"]');
+
+  // ── 旧い形のデータの移し替え ──
+  await KK(async () => {
+    const K = window.KK;
+    await K.repo.commit([
+      K.repo.put('categories', { id: 'old-cat', name: '旧ダイヤル', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', fields: [{ key: 'reso', label: '最小表示量', type: 'number', unit: 'mm' }, { key: 'memo', label: 'メモ', type: 'text' }] }),
+      K.repo.put('assets', { id: 'old-a1', categoryId: 'old-cat', locationId: K.repo.locations.list()[0].id, mgmtNo: 'OLD-1', serial: '', model: '', maker: '', lastCalDate: '', state: 'active', props: { reso: 0.01 } }),
+      K.repo.put('assets', { id: 'old-a2', categoryId: 'old-cat', locationId: K.repo.locations.list()[0].id, mgmtNo: 'OLD-2', serial: '', model: '', maker: '', lastCalDate: '', state: 'active', props: { reso: 0.01 } }),
+      K.repo.put('assets', { id: 'old-a3', categoryId: 'old-cat', locationId: K.repo.locations.list()[0].id, mgmtNo: 'OLD-3', serial: '', model: '', maker: '', lastCalDate: '', state: 'active', props: { reso: 0.001 } })
+    ], 'test');
+    await K.repo.settings.set('schemaVersion', 1);
+  });
+  await page.reload(); await page.waitForSelector('body.is-ready');
+  const mig = await KK(() => { const K = window.KK; const c = K.repo.categories.get('old-cat'); return { res: c.resolution, unit: c.unit, fields: c.fields.map((f) => f.key), a1: K.repo.assets.get('old-a1').resolution, a3: K.repo.assets.get('old-a3').resolution }; });
+  check('旧い「最小表示量」項目を分類の正式な項目に移し替える', mig.res === '0.01' && mig.unit === 'mm' && !mig.fields.includes('reso') && mig.fields.includes('memo'), JSON.stringify(mig));
+  check('分類と違う値の機器だけ上書きにする', mig.a1 == null && mig.a3 === '0.001');
+  await KK(async () => { const K = window.KK; await K.repo.commit(['old-a1', 'old-a2', 'old-a3'].map((id) => K.repo.del('assets', id)).concat([K.repo.del('categories', 'old-cat')]), 'test'); });
+
   // ── バックアップ（書き出し→読み込み） ──
   await page.click('.rail__btn[data-panel="backup"]');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-export]')]);
@@ -233,7 +290,7 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   await page.click('[data-clear-sample]');
   await page.waitForTimeout(300);
   const left = await KK(() => window.KK.repo.assets.list().map((a) => a.serial || a.mgmtNo));
-  check('サンプルだけが消え、自分で登録した個体は残る', left.length === 3 && left.includes('M-009') && left.includes('BS-198812-20'), left.join(', '));
+  check('サンプルだけが消え、自分で登録した個体は残る', left.length === 4 && left.includes('M-077') && left.includes('M-009') && left.includes('BS-198812-20'), left.join(', '));
   check('サンプルのセットに入れた子は親が外れて残る', await KK(() => window.KK.repo.assets.list().every((a) => !a.parentId)));
   check('利用者の個体がある設置先は残る', await KK(() => window.KK.repo.locations.list().some((l) => l.name === '第2加工ライン')));
   await shot('05-after-clear');

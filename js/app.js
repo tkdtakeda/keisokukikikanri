@@ -13,6 +13,7 @@
       await KK.repo.commit(KK.defaultCategories.map((c, i) => KK.repo.put('categories', { ...c, order: i })), 'categories');
     }
     await KK.repo.settings.set('initialized', true);
+    await KK.repo.settings.set('schemaVersion', KK.migrate.latest()); // 新しく始めたときは移し替え不要
   }
 
   // ── 上部バー ──
@@ -74,6 +75,7 @@
     try {
       await KK.repo.load();
       await ensureDefaults();
+      var migrated = await KK.migrate.run();
     } catch (e) { fatal(e); return; }
     KK.state.restore();
     if (!KK.repo.settings.get('uiState')) KK.state.set({ hiddenColumns: KK.defaultHiddenColumns.slice() });
@@ -89,6 +91,7 @@
       if (keys.some((k) => ['locationId', 'query', 'searchScope'].includes(k))) { renderCta(); renderSearch(); }
     });
     KK.bus.on('data:changed', renderCta);
+    if (migrated.length) KK.toast(`データを新しい形に移し替えました：${migrated.join('／')}`, { kind: 'info' });
     if (window.__iconLoadFailed) KK.toast('アイコンを読み込めませんでした（ネット未接続の可能性）。操作には影響しません', { kind: 'info' });
     document.body.classList.add('is-ready');
   }

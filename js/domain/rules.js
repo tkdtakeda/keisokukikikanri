@@ -21,6 +21,26 @@
     },
     compareIdentity: (a, b) => collator.compare(rules.identity(a), rules.identity(b)),
 
+    /** 単位と最小表示量。機器で上書きしていなければ分類の値。inherited はどちらが分類由来か */
+    resolution(a) {
+      const cat = rules.category(a);
+      const ownRes = a.resolution != null && a.resolution !== '';
+      const ownUnit = a.unit != null;
+      return {
+        resolution: ownRes ? a.resolution : (cat.resolution || ''),
+        unit: ownUnit ? a.unit : (cat.unit ?? ''),
+        inheritedRes: !ownRes, inheritedUnit: !ownUnit
+      };
+    },
+    /** 測定値の小数の桁数（最小表示量から）。決まっていなければ null */
+    digits(a) { return KK.num.digitsOf(rules.resolution(a).resolution); },
+    /** 「0.001 mm」のような表示 */
+    resolutionText(a) {
+      const r = rules.resolution(a);
+      if (!r.resolution) return '';
+      return `${r.resolution}${r.unit ? ' ' + r.unit : ''}`;
+    },
+
     interval(a) { return Number(a.intervalMonths) > 0 ? Number(a.intervalMonths) : Number(rules.category(a).intervalMonths) || 12; },
 
     /** 校正日：未入力の子は親の校正日を引き継ぐ */
@@ -72,6 +92,7 @@
       if (input.lastCalDate && !U.isValidDate(input.lastCalDate)) err.lastCalDate = '日付が正しくありません';
       else if (input.lastCalDate && input.lastCalDate > U.today()) err.lastCalDate = '未来の日付は入力できません';
       if (input.intervalMonths !== '' && input.intervalMonths != null && !(Number(input.intervalMonths) > 0)) err.intervalMonths = '1 以上の月数を入力してください';
+      if (input.resolution && !(Number(KK.num.clean(input.resolution)) > 0)) err.resolution = '0.001 のような正の数で入力してください';
 
       // 識別キーの重複（廃棄済みは対象外）
       if (idKey && input.state !== 'retired' && !err[idKey.required[0]]) {
@@ -126,6 +147,9 @@
         maker: (input.maker || '').trim(),
         lastCalDate: input.lastCalDate || '',
         intervalMonths: input.intervalMonths === '' || input.intervalMonths == null ? null : Number(input.intervalMonths),
+        // 単位・最小表示量：null は分類に従う（'' の単位は「単位なし」を選んだ状態）
+        unit: input.unit === undefined ? (before?.unit ?? null) : (input.unit === '__inherit' ? null : input.unit),
+        resolution: input.resolution === undefined ? (before?.resolution ?? null) : (KK.num.clean(input.resolution) || null),
         state: input.state || 'active',
         note: (input.note || '').trim(),
         props: input.props || {},

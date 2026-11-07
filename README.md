@@ -34,6 +34,10 @@
   - 親を移動すると子も一緒に移動する
 - **記録は追記していく**（登録・移動・校正・状態変更）。設置先の変更は「移動」として残る
 - **分類ごとに項目を定義**する（文字・数値＋単位・選択肢・日付・長い文章）
+- **単位と最小表示量（表示桁）**は分類で既定を決め、機器ごとに上書きできる（`null` は分類に従う）
+  - 数値は打ったとおりの文字で保存し、表示桁に足りない 0 だけを補う（1 → 1.000）。桁を超えた値は丸めずに残して警告する
+  - 単位の選択肢は meta の `units`（'' は単位なし）。利用者が追加できる
+  - データの形を変えたときは `js/data/migrate.js` に手順を足す（起動時に 1 回、`schemaVersion` で管理）
 - **校正に使った標準器（トレーサビリティ）は校正の記録に持たせる**（`events.standards`）。構成（親子）とは別の関係
   - 同じ校正で別のセット（セット全体・中のゲージとも）は使えない
   - 標準器が校正日の時点で有効だったかを、標準器自身の校正記録から判定する（期限切れでも登録はでき、警告を出す）
@@ -43,8 +47,8 @@
 | ストア | 内容 |
 |---|---|
 | `locations` | 設置先（id, name, parentId, order） |
-| `categories` | 分類（kind, intervalMonths, identityKey, fields[]） |
-| `assets` | 個体（categoryId, locationId, parentId, mgmtNo, serial, model, maker, lastCalDate, intervalMonths, state, props{}, note） |
+| `categories` | 分類（kind, intervalMonths, identityKey, unit, resolution, fields[]。数値の項目は unit・digits を持つ） |
+| `assets` | 個体（categoryId, locationId, parentId, mgmtNo, serial, model, maker, lastCalDate, intervalMonths, unit, resolution, state, props{}, note） |
 | `events` | 記録（assetId, type, date, text, by。校正なら standards[], standardLabels[]） |
 | `attachments` | 写真・書類（assetId, name, type, blob） |
 | `meta` | 設定（画面の状態、前回の書き出し日など） |
@@ -64,7 +68,9 @@ js/data/db.js        IndexedDB の薄い包み（保存先を触るのはここ�
 js/data/repo.js      保存係。全件をメモリに持ち、書き込みを IndexedDB に反映
 js/data/samples.js   サンプルの登録簿と、読み込み・サンプルだけを消す処理
 js/data/backup.js    JSON の書き出し・読み込み
+js/domain/units.js   単位の選択肢と、数値の表示桁（桁をそろえる・超えたら警告）
 js/domain/catalog.js 大分類・識別キー・項目の型・既定の分類
+js/data/migrate.js   データの移し替え（起動時に 1 回）
 js/domain/rules.js   期限・状態・入力検査・保存の手続き（記録の作成）
 js/domain/trace.js   トレーサビリティ（選べる標準器・同時に使えない組合せ・校正時点の有効性・逆引き）
 js/ui/*.js           画面部品（設置先・台帳・詳細・登録フォーム・マスタ編集・パネル・説明書・共通部品）
@@ -92,7 +98,7 @@ mockups/             レイアウト案 5 案と評価
 
 ## 動作確認
 
-Node.js と Playwright がある環境で次を実行する（主要な作業経路 50 項目を確認）。
+Node.js と Playwright がある環境で次を実行する（主要な作業経路 65 項目を確認）。
 
 ```bash
 node tests/e2e.js

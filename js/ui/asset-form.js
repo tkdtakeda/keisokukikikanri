@@ -33,6 +33,18 @@
   }
   const makers = () => [...new Set(KK.repo.assets.list().map((a) => a.maker).filter(Boolean))].sort();
 
+  /** 桁の基準にする「入力中の個体」（まだ保存していない値で表示桁を決める） */
+  function ctxAsset(v) {
+    return { categoryId: v.categoryId, parentId: v.parentId, resolution: KK.num.clean(v.resolution || '') || null, unit: v.unit === '__inherit' || v.unit === undefined ? null : v.unit };
+  }
+  /** 「1 → 1.000 mm」の表示の例 */
+  function resSample(v) {
+    const a = ctxAsset(v);
+    const d = R.digits(a); const unit = R.resolution(a).unit;
+    if (d == null) return '<span class="sub">最小表示量を決めると、桁をそろえて表示します</span>';
+    return `<b>1</b> → <b>${esc(KK.num.format('1', d).text)}</b>${unit ? ' ' + esc(unit) : ''}`;
+  }
+
   // ── フォーム本体 ──
   function bodyHtml(v) {
     const cat = KK.repo.categories.get(v.categoryId);
@@ -53,6 +65,10 @@
         <div class="field span-4"><label>型式・仕様</label><input class="input" data-field="model" value="${esc(v.model)}" data-next></div>
         <div class="field span-2"><label>メーカー</label><input class="input" data-field="maker" value="${esc(v.maker)}" list="makerList" data-next>
           <datalist id="makerList">${makers().map((m) => `<option value="${esc(m)}">`).join('')}</datalist></div>
+        <div class="field span-2"><label>測定値の単位</label><select class="input" data-field="unit" data-next>${KK.units.options(v.unit ?? null, { inherit: `分類に従う（${KK.units.label(cat?.unit ?? '')}）` })}</select></div>
+        <div class="field span-2"><label>最小表示量</label><input class="input" data-field="resolution" inputmode="decimal" value="${esc(v.resolution || '')}" placeholder="${esc(cat?.resolution || '0.001')}" data-next>
+          <span class="hint">${cat?.resolution ? `空欄なら分類の ${esc(cat.resolution)}` : '分類に既定がありません'}</span></div>
+        <div class="field span-2"><label>表示の例</label><div class="res-sample" data-res-sample>${resSample(v)}</div></div>
         <div class="field span-3"><label>前回校正日</label>${KK.dateInputHtml('lastCalDate', v.lastCalDate)}
           <span class="hint">${parent ? '空欄なら親の校正日を引き継ぎます' : '空欄なら「校正日なし」として表示します'}</span></div>
         <div class="field span-1"><label>周期</label><div class="unit-input"><input class="input" data-field="intervalMonths" inputmode="numeric" value="${esc(v.intervalMonths ?? '')}" placeholder="${defInterval}" data-next><span class="unit">か月</span></div></div>
@@ -60,7 +76,7 @@
         <div class="field span-6"><label>校正に使った標準器 <span class="sub">（前回校正日の校正で使ったもの）</span></label><div data-std-host></div></div>
         ${(cat?.fields || []).length ? `<div class="form-sep">${esc(cat.name)} の項目 <button type="button" class="btn btn--ghost btn--small" data-edit-cat title="この分類の項目を編集"><i class="fa-solid fa-shapes"></i>項目を編集</button></div>` : ''}
         ${(cat?.fields || []).map((f) => `<div class="field ${f.type === 'longtext' ? 'span-6' : 'span-2'}"><label>${esc(f.label)}${f.required ? '<span class="req">*</span>' : ''}</label>
-          ${KK.fieldTypes.get(f.type)?.input(f, v.props?.[f.key] ?? '') || ''}</div>`).join('')}
+          ${KK.fieldTypes.get(f.type)?.input(f, v.props?.[f.key] ?? '', ctxAsset(v)) || ''}</div>`).join('')}
         <div class="field span-6"><label>備考</label><textarea class="input input--area" data-field="note" rows="2">${esc(v.note)}</textarea></div>
         ${ctx.mode === 'new' ? `<div class="field span-6"><label>写真・書類</label>
           <label class="drop" data-form-drop><i class="fa-solid fa-image"></i> Ctrl+V で貼り付け／ドラッグ＆ドロップ／<u>ファイルを選ぶ</u><input type="file" multiple hidden accept="image/*,application/pdf"></label>
@@ -116,6 +132,7 @@
     const focusKey = document.activeElement?.dataset?.field;
     win.querySelector('.floating__body').innerHTML = bodyHtml(v);
     mountStd();
+    win.querySelectorAll('[data-num]').forEach(formatNum);
     if (focusKey) win.querySelector(`[data-field="${focusKey}"]`)?.focus();
   }
 
@@ -176,9 +193,11 @@
       Object.entries(pick).forEach(([k, msg]) => { const el = win.querySelector(`[data-field="${k}"]`); el.classList.add('is-invalid'); el.closest('.field').insertAdjacentHTML('beforeend', `<span class="field-error"><i class="fa-solid fa-circle-exclamation"></i>${esc(msg)}</span>`); });
     }, 250);
     win.addEventListener('input', (e) => { if (['mgmtNo', 'serial'].includes(e.target.dataset.field)) live(); });
+    // 数値：欄を出たら桁をそろえる。桁を超えていれば警告だけ出し、丸めない
+    win.addEventListener('focusout', (e) => { if (e.target.matches('[data-num]')) formatNum(e.target); });
     win.addEventListener('change', (e) => {
       const k = e.target.dataset.field;
-      if (k === 'categoryId' || k === 'parentId' || k === 'locationId') {
+      if (k === 'categoryId' || k === 'parentId' || k === 'locationId' || k === 'resolution' || k === 'unit') {
         const v = read();
         if (k === 'parentId' && v.parentId) v.locationId = KK.repo.assets.get(v.parentId).locationId;
         rerender(v);
@@ -200,6 +219,15 @@
     });
     win.addEventListener('dragover', (e) => { if (e.target.closest('[data-form-drop]')) e.preventDefault(); });
     win.addEventListener('drop', (e) => { if (e.target.closest('[data-form-drop]')) { e.preventDefault(); addPending(e.dataTransfer.files); } });
+  }
+  function formatNum(input) {
+    const field = input.closest('.field');
+    field.querySelector('.field-warn')?.remove();
+    const d = input.dataset.digits === '' ? null : Number(input.dataset.digits);
+    const r = KK.num.format(input.value, d);
+    if (!r.valid) return;
+    if (r.text !== input.value) { input.value = r.text; KK.flash(input); }
+    if (r.excess) field.insertAdjacentHTML('beforeend', `<span class="field-warn"><i class="fa-solid fa-triangle-exclamation"></i>${esc(KK.num.excessText(d))}</span>`);
   }
   function addPending(files) {
     const ok = [...files].filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');

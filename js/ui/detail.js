@@ -90,7 +90,8 @@
               ${propRow('製造番号', esc(a.serial))}
               ${propRow('型式・仕様', esc(a.model))}
               ${propRow('メーカー', esc(a.maker))}
-              ${(cat.fields || []).map((f) => propRow(f.label, KK.fieldTypes.get(f.type)?.format(a.props?.[f.key] ?? '', f) ?? esc(a.props?.[f.key]))).join('')}
+              ${propRow('最小表示量', R.resolutionText(a) ? `${esc(R.resolutionText(a))} <span class="tag">${R.resolution(a).inheritedRes && R.resolution(a).inheritedUnit ? '分類の既定' : 'この機器で上書き'}</span>` : '')}
+              ${(cat.fields || []).map((f) => propRow(f.label, KK.fieldTypes.get(f.type)?.format(a.props?.[f.key] ?? '', f, a) ?? esc(a.props?.[f.key]))).join('')}
               ${propRow('状態', esc(KK.assetStates[a.state]?.label))}
               ${propRow('識別キー', `<span class="sub">${esc(KK.identityKeys.get(cat.identityKey)?.label || '')}</span>`)}
               ${a.note ? propRow('備考', esc(a.note).replace(/\n/g, '<br>')) : ''}

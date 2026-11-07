@@ -63,6 +63,7 @@
         categoryId: cat(a.categoryId), locationId: a.locationId, parentId: a.parentId || null,
         mgmtNo: a.mgmtNo || '', serial: a.serial || '', model: a.model || '', maker: a.maker || '',
         lastCalDate, intervalMonths: a.intervalMonths || null, state: a.state || 'active',
+        unit: a.unit ?? null, resolution: a.resolution || null,
         note: a.note || '', props: a.props || {}, sample: true
       };
       out.assets.push(x);
@@ -82,17 +83,17 @@
   // ── パターン：測定機器（ライン別） ──
   KK.samplePatterns.register({
     id: 'lines', order: 1, label: '測定機器（ライン別）', icon: 'fa-ruler-combined',
-    desc: '3 ラインに同じ管理番号（M-001 など）があり、期限切れ・期限間近・保管中・廃棄後の番号再利用を含む',
+    desc: '3 ラインに同じ管理番号（M-001 など）があり、期限切れ・期限間近・保管中・廃棄後の番号再利用、表示桁を上書きしたマイクロメータを含む',
     build() {
       const b = builder(101);
       const lines = [['製造部', '加工課', '第1加工ライン'], ['製造部', '加工課', '第2加工ライン'], ['製造部', '組立課', '組立ライン']];
       const plan = [
-        ['cat-micro', 'M-001', 'MDC-25MX 0-25mm', { range: '0-25 mm', resolution: 0.001, tolerance: '±2 µm' }],
-        ['cat-micro', 'M-002', 'MDC-50MX 25-50mm', { range: '25-50 mm', resolution: 0.001, tolerance: '±2 µm' }],
-        ['cat-caliper', 'N-001', 'CD-15AX 150mm', { range: '0-150 mm', resolution: 0.01, display: 'デジタル' }],
-        ['cat-caliper', 'N-002', 'CD-20AX 200mm', { range: '0-200 mm', resolution: 0.01, display: 'デジタル' }],
+        ['cat-micro', 'M-001', 'MDC-25MX 0-25mm', { range: '0-25 mm', tolerance: '2' }],
+        ['cat-micro', 'M-002', 'MDC-50MX 25-50mm', { range: '25-50 mm', tolerance: '2' }],
+        ['cat-caliper', 'N-001', 'CD-15AX 150mm', { range: '0-150 mm', display: 'デジタル' }],
+        ['cat-caliper', 'N-002', 'CD-20AX 200mm', { range: '0-200 mm', display: 'デジタル' }],
         ['cat-feeler', 'S-001', '150A13 13枚組', { leaves: 13, range: '0.03-0.5 mm' }],
-        ['cat-dial', 'D-001', '2046S 0.01mm', { range: '0-10 mm', resolution: 0.01 }]
+        ['cat-dial', 'D-001', '2046S 0.01mm', { range: '0-10 mm' }]
       ];
       const daysLeft = [[-9, 14, 120, 200, 6, 90], [-7, 180, 25, 300, -2, 45], [60, 150, 240, 12, 175, 320]];
       lines.forEach((path, li) => {
@@ -104,6 +105,7 @@
       });
       const l2 = b.loc(lines[1]);
       b.asset({ categoryId: 'cat-micro', locationId: l2, mgmtNo: 'M-002', model: 'MDC-25MX 0-25mm（旧）', maker: 'ミツトヨ', state: 'retired', daysLeft: -400, note: '摩耗のため廃棄。管理番号は後継機で再利用' });
+      b.asset({ categoryId: 'cat-micro', locationId: b.loc(lines[2]), mgmtNo: 'M-005', model: 'アナログ外側マイクロ 0-25mm', maker: 'ミツトヨ', resolution: '0.01', daysLeft: 140, props: { range: '0-25 mm', tolerance: '4' }, note: 'アナログ表示のため、表示桁を 0.01 mm に上書きしている' });
       b.asset({ categoryId: 'cat-caliper', locationId: b.loc(['製造部', '加工課']), mgmtNo: 'N-003', model: 'CD-15AX 150mm', maker: 'ミツトヨ', state: 'stored', daysLeft: 80, note: '予備機。課で保管' });
       return b.out;
     }

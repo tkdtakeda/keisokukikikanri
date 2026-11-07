@@ -22,7 +22,7 @@
     async exportJson() {
       const data = await KK.repo.dumpAll();
       const attachments = await Promise.all(data.attachments.map(async (x) => ({ ...x, blob: undefined, dataUrl: await blobToDataUrl(x.blob) })));
-      const doc = { format: FORMAT, version: VERSION, exportedAt: new Date().toISOString(), ...data, attachments };
+      const doc = { format: FORMAT, version: VERSION, schemaVersion: KK.repo.settings.get('schemaVersion', 1), units: KK.units.list(), exportedAt: new Date().toISOString(), ...data, attachments };
       const blob = new Blob([JSON.stringify(doc)], { type: 'application/json' });
       const name = `測定機器台帳_${KK.util.today()}.json`;
       const a = document.createElement('a');
@@ -43,6 +43,9 @@
       const attachments = await Promise.all((doc.attachments || []).map(async (x) => ({ ...x, dataUrl: undefined, blob: await dataUrlToBlob(x.dataUrl) })));
       const before = await KK.repo.dumpAll();
       await KK.repo.replaceAll({ ...doc, attachments });
+      // 古い版の書き出しなら、読み込んだデータを今の形に移し替える
+      if ((doc.schemaVersion || 1) < KK.migrate.latest()) { await KK.repo.settings.set('schemaVersion', doc.schemaVersion || 1); await KK.migrate.run(); }
+      if (Array.isArray(doc.units)) await KK.units.ensure(doc.units);
       return { before, assets: doc.assets.length, exportedAt: doc.exportedAt };
     },
 

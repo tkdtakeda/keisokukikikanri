@@ -29,14 +29,19 @@
         <div class="field span-3"><label>見分け方（識別キー）</label><select class="input" data-c="identityKey">${KK.identityKeys.list().map((k) => `<option value="${k.id}"${k.id === c.identityKey ? ' selected' : ''}>${esc(k.label)}</option>`).join('')}</select>
           <span class="hint">重複は使用中の個体の中で調べます</span></div>
         <div class="field span-3"><label>校正周期（既定）</label><div class="unit-input"><input class="input" data-c="intervalMonths" inputmode="numeric" value="${esc(c.intervalMonths)}"><span class="unit">か月</span></div></div>
+        <div class="field span-3"><label>測定値の単位（既定）</label><div class="unit-input"><select class="input" data-c="unit">${KK.units.options(c.unit ?? '')}</select>
+          <button type="button" class="btn btn--ghost btn--icon" data-open-units title="単位の選択肢を編集"><i class="fa-solid fa-pen-to-square"></i></button></div></div>
+        <div class="field span-3"><label>最小表示量（既定）</label><input class="input" data-c="resolution" inputmode="decimal" value="${esc(c.resolution || '')}" placeholder="0.001">
+          <span class="hint">${c.resolution ? `表示桁：小数 ${KK.num.digitsOf(c.resolution)} 桁（1 → ${esc(KK.num.format('1', KK.num.digitsOf(c.resolution)).text)}）。機器ごとに上書きできます` : '校正の値をこの桁でそろえて表示・記録します'}</span></div>
         <div class="form-sep">項目（この分類の個体が持つ情報）</div>
         <div class="span-6">
-          <table class="mini-grid"><thead><tr><th>項目名</th><th>型</th><th>単位・選択肢</th><th>必須</th><th></th></tr></thead><tbody>
+          <table class="mini-grid"><thead><tr><th>項目名</th><th>型</th><th>単位・選択肢</th><th>桁</th><th>必須</th><th></th></tr></thead><tbody>
           ${(c.fields || []).map((f, i) => `<tr data-fi="${i}">
             <td><input class="input" data-f="label" value="${esc(f.label)}"></td>
             <td><select class="input" data-f="type">${types.map((t) => `<option value="${t.id}"${t.id === f.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select></td>
-            <td>${f.type === 'number' ? `<input class="input" data-f="unit" value="${esc(f.unit || '')}" placeholder="mm など">`
+            <td>${f.type === 'number' ? `<select class="input" data-f="unit">${KK.units.options(f.unit || '')}</select>`
               : f.type === 'select' ? `<input class="input" data-f="options" value="${esc((f.options || []).join('、'))}" placeholder="「、」で区切る">` : '<span class="sub">—</span>'}</td>
+            <td>${f.type === 'number' ? `<select class="input" data-f="digits" title="入力どおり：打った桁で表示／機器の表示桁：機器の最小表示量にそろえる">${KK.num.fieldDigitOptions(f.digits)}</select>` : '<span class="sub">—</span>'}</td>
             <td class="center"><input type="checkbox" data-f="required" ${f.required ? 'checked' : ''}></td>
             <td class="nowrap"><button class="btn btn--ghost btn--icon" data-fmove="-1" title="上へ" ${i === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i></button>
               <button class="btn btn--ghost btn--icon" data-fmove="1" title="下へ" ${i === c.fields.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-down"></i></button>
@@ -88,6 +93,9 @@
     if (dup) { KK.toast(`分類名「${name}」は既にあります`, { kind: 'warn' }); return; }
     const iv = Number(String(editing.intervalMonths).normalize('NFKC'));
     if (!(iv > 0)) { KK.toast('校正周期は 1 以上の月数で入力してください', { kind: 'warn' }); return; }
+    const res = KK.num.clean(editing.resolution || '');
+    if (res === null || (res !== '' && !(Number(res) > 0))) { KK.toast('最小表示量は 0.001 のような正の数で入力してください', { kind: 'warn' }); return; }
+    editing.resolution = res;
     const fields = editing.fields.filter((f) => (f.label || '').trim()).map((f) => ({ ...f, label: f.label.trim() }));
     const before = KK.repo.categories.get(editing.id);
     const saved = { ...editing, name, intervalMonths: iv, fields, sample: false };
@@ -106,12 +114,13 @@
     catWin.addEventListener('click', async (e) => {
       const t = e.target;
       const c = t.closest('[data-cat]'); if (c) { selectCat(c.dataset.cat); return; }
+      if (t.closest('[data-open-units]')) { readCatForm(); openUnits(); return; }
       if (t.closest('[data-new-cat]')) {
-        editing = { id: uid('c'), name: '新しい分類', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', fields: [] };
+        editing = { id: uid('c'), name: '新しい分類', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '', fields: [] };
         renderCat(); catWin.querySelector('[data-c="name"]').select(); return;
       }
       if (!editing) return;
-      if (t.closest('[data-fadd]')) { readCatForm(); editing.fields.push({ key: uid('p'), label: '', type: 'text' }); renderCat(); catWin.querySelector('[data-fi]:last-child [data-f="label"]')?.focus(); }
+      if (t.closest('[data-fadd]')) { readCatForm(); editing.fields.push({ key: uid('p'), label: '', type: 'text', unit: '', digits: '' }); renderCat(); catWin.querySelector('[data-fi]:last-child [data-f="label"]')?.focus(); }
       else if (t.closest('[data-fdel]')) { readCatForm(); editing.fields.splice(Number(t.closest('[data-fi]').dataset.fi), 1); renderCat(); }
       else if (t.closest('[data-fmove]')) {
         readCatForm(); const i = Number(t.closest('[data-fi]').dataset.fi); const j = i + Number(t.closest('[data-fmove]').dataset.fmove);
@@ -125,7 +134,7 @@
         KK.toast(`分類「${before.name}」を削除しました`, { kind: 'warn', undo: () => KK.repo.categories.save(before) });
       }
     });
-    catWin.addEventListener('change', (e) => { if (e.target.dataset.f === 'type') { readCatForm(); renderCat(); } });
+    catWin.addEventListener('change', (e) => { if (e.target.dataset.f === 'type' || e.target.dataset.c === 'resolution') { readCatForm(); renderCat(); } });
     catWin.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); saveCat(); } });
     KK.wireFormAssist(catWin);
   }
@@ -246,5 +255,44 @@
     }, true);
   }
 
-  KK.masters = { openCategories, openLocations };
+  // ════ 単位の選択肢 ════
+  let unitWin = null;
+  function renderUnits() {
+    unitWin.querySelector('.floating__body').innerHTML = `
+      <div class="unit-list">${KK.units.list().map((u) => {
+        const n = KK.units.usage(u);
+        const why = u === '' ? '「単位なし」は削除できません' : n ? `${n} か所で使っているため削除できません` : '削除';
+        return `<div class="unit-row"><span class="unit-row__name">${esc(KK.units.label(u))}</span><span class="sub">${n ? `${n} か所で使用` : '未使用'}</span>
+          <button class="btn btn--ghost btn--icon" data-unit-del="${esc(u)}" ${u === '' || n ? 'disabled' : ''} title="${esc(why)}"><i class="fa-solid fa-trash-can"></i></button></div>`;
+      }).join('')}</div>
+      <div class="unit-add"><input class="input" data-unit-new placeholder="追加する単位（例：mN・deg）"><button class="btn" data-unit-add><i class="fa-solid fa-plus"></i>追加</button></div>
+      <div class="hint">追加した単位は、分類・機器・数値の項目の選択肢に出ます。</div>`;
+  }
+  async function addUnit() {
+    const input = unitWin.querySelector('[data-unit-new]');
+    try {
+      const u = await KK.units.add(input.value);
+      renderUnits(); KK.toast(`単位「${u}」を追加しました`);
+      KK.flash(unitWin.querySelector('.unit-list').lastElementChild?.previousElementSibling);
+      if (catWin && editing) renderCat();
+      unitWin.querySelector('[data-unit-new]').focus();
+    } catch (e) { KK.toast(e.message, { kind: 'warn' }); input.focus(); input.select(); }
+  }
+  function openUnits() {
+    unitWin = KK.floating({ id: 'unitWin', title: '単位の選択肢', icon: 'fa-ruler', width: 380, body: '', onClose: () => { unitWin = null; } });
+    renderUnits();
+    unitWin.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-unit-add]')) addUnit();
+      const d = e.target.closest('[data-unit-del]');
+      if (d) {
+        const u = d.dataset.unitDel;
+        try { await KK.units.remove(u); renderUnits(); if (catWin && editing) renderCat(); KK.toast(`単位「${u}」を削除しました`, { kind: 'warn', undo: async () => { await KK.units.ensure([u]); if (unitWin) renderUnits(); } }); }
+        catch (err) { KK.toast(err.message, { kind: 'warn' }); }
+      }
+    });
+    unitWin.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.target.matches('[data-unit-new]')) { e.preventDefault(); addUnit(); } });
+    unitWin.querySelector('[data-unit-new]').focus();
+  }
+
+  KK.masters = { openCategories, openLocations, openUnits };
 })();

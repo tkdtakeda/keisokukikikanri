@@ -14,6 +14,8 @@
     { id: 'identity', label: '番号', fixed: true, sortVal: (a) => R.identity(a), cell: (a, c) => `${c.indent}${c.toggle}<b class="ident">${esc(R.identity(a))}</b>${c.kids ? ` <span class="sub">（${c.kids}）</span>` : ''}${a.sample ? ' <span class="tag tag--sample">サンプル</span>' : ''}` },
     { id: 'category', label: '分類', sortVal: (a) => R.category(a).name, cell: (a) => `${KK.kindTag(a)} ${esc(R.category(a).name)}` },
     { id: 'model', label: '型式・仕様', max: 260, sortVal: (a) => a.model, cell: (a) => esc(a.model) || dash },
+    { id: 'resolution', label: '最小表示量', num: true, sortVal: (a) => Number(R.resolution(a).resolution) || 0,
+      cell: (a) => (R.resolutionText(a) ? `${esc(R.resolutionText(a))}${R.resolution(a).inheritedRes && R.resolution(a).inheritedUnit ? '' : ' <span class="tag" title="この機器で上書き">上書き</span>'}` : dash) },
     { id: 'mgmtNo', label: '管理番号', sortVal: (a) => a.mgmtNo, cell: (a) => esc(a.mgmtNo) || dash },
     { id: 'serial', label: '製造番号', sortVal: (a) => a.serial, cell: (a) => esc(a.serial) || dash },
     { id: 'maker', label: 'メーカー', sortVal: (a) => a.maker, cell: (a) => esc(a.maker) || dash },
