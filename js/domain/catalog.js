@@ -93,29 +93,29 @@
   const F = (key, label, type = 'text', extra = {}) => ({ key, label, type, ...extra });
   KK.defaultCategories = [
     { id: 'cat-micro', name: 'マイクロメータ', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', calType: 'internal', unit: 'mm', resolution: '0.001',
-      fields: [F('tolerance', '器差許容値（±）', 'number', { unit: 'µm', digits: '1' })] },
+      fields: [F('tolerance', '器差許容値（±）', 'number', { unit: 'µm', digits: '1', place: 'model' })] },
     { id: 'cat-caliper', name: 'ノギス', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', calType: 'internal', unit: 'mm', resolution: '0.01',
-      fields: [F('display', '表示方式', 'select', { options: ['デジタル', 'ダイヤル', 'バーニヤ'] })] },
+      fields: [F('display', '表示方式', 'select', { options: ['デジタル', 'ダイヤル', 'バーニヤ'], place: 'model' })] },
     { id: 'cat-feeler', name: 'すきまゲージ', kind: 'measure', intervalMonths: 6, identityKey: 'locationNo', calType: 'internal', unit: 'mm', resolution: '0.01',
-      fields: [F('leaves', '枚数', 'number', { unit: '', digits: '0' })] },
+      fields: [F('leaves', '枚数', 'number', { unit: '', digits: '0', place: 'model' })] },
     { id: 'cat-dial', name: 'ダイヤルゲージ', kind: 'measure', intervalMonths: 12, identityKey: 'locationNo', calType: 'internal', unit: 'mm', resolution: '0.01',
       fields: [] },
-    { id: 'cat-gbset', name: 'ブロックゲージセット', kind: 'standard', intervalMonths: 24, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.0001',
-      fields: [F('grade', '等級', 'select', { options: ['K級', '0級', '1級', '2級'] }), F('pieces', '個数', 'number', { unit: '', digits: '0' }), F('certNo', '校正証明書番号')] },
-    { id: 'cat-gb', name: 'ブロックゲージ', kind: 'standard', intervalMonths: 24, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.0001',
-      fields: [F('nominal', '呼び寸法', 'number', { unit: 'mm', digits: 'asset' }), F('deviation', '寸法差', 'number', { unit: 'µm', digits: '2' })] },
+    { id: 'cat-gbset', builtins: { range: { use: false } }, name: 'ブロックゲージセット', kind: 'standard', intervalMonths: 24, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.0001',
+      fields: [F('grade', '等級', 'select', { options: ['K級', '0級', '1級', '2級'], place: 'model' }), F('pieces', '個数', 'number', { unit: '', digits: '0', place: 'model' }), F('certNo', '校正証明書番号', 'text', { place: 'asset' })] },
+    { id: 'cat-gb', builtins: { range: { use: false } }, name: 'ブロックゲージ', kind: 'standard', intervalMonths: 24, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.0001',
+      fields: [F('nominal', '呼び寸法', 'number', { unit: 'mm', digits: 'asset', place: 'asset' }), F('deviation', '寸法差', 'number', { unit: 'µm', digits: '2', place: 'asset' })] },
     { id: 'cat-calmicro', name: '校正用マイクロメータ', kind: 'standard', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.001',
-      fields: [F('certNo', '校正証明書番号')] },
+      fields: [F('certNo', '校正証明書番号', 'text', { place: 'asset' })] },
     { id: 'cat-calfeeler', name: '校正用すきまゲージ', kind: 'standard', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.001',
-      fields: [F('certNo', '校正証明書番号')] },
+      fields: [F('certNo', '校正証明書番号', 'text', { place: 'asset' })] },
     { id: 'cat-tensile', name: '引張試験機', kind: 'test', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'kN', resolution: '0.01',
-      fields: [F('capacity', '容量', 'number', { unit: 'kN', digits: '0' }), F('grade', '等級', 'select', { options: ['0.5級', '1級', '2級'] })] },
+      fields: [F('capacity', '容量', 'number', { unit: 'kN', digits: '0', place: 'model' }), F('grade', '等級', 'select', { options: ['0.5級', '1級', '2級'], place: 'model' })] },
     { id: 'cat-force', name: '力計', kind: 'test', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'kN', resolution: '0.01',
-      fields: [F('capacity', '容量', 'number', { unit: 'kN', digits: '0' })] },
-    { id: 'cat-loadcell', name: 'ロードセル', kind: 'test', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'kN', resolution: '0.01',
-      fields: [F('capacity', '定格容量', 'number', { unit: 'kN', digits: '0' })] },
+      fields: [F('capacity', '容量', 'number', { unit: 'kN', digits: '0', place: 'model' })] },
+    { id: 'cat-loadcell', builtins: { range: { use: false } }, name: 'ロードセル', kind: 'test', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'kN', resolution: '0.01',
+      fields: [F('capacity', '定格容量', 'number', { unit: 'kN', digits: '0', place: 'model' })] },
     { id: 'cat-ext', name: '伸び計', kind: 'test', intervalMonths: 12, identityKey: 'serial', calType: 'external', unit: 'mm', resolution: '0.001',
-      fields: [F('gauge', '標点距離', 'number', { unit: 'mm', digits: '0' }), F('stroke', 'ストローク', 'number', { unit: 'mm', digits: '0' })] }
+      fields: [F('gauge', '標点距離', 'number', { unit: 'mm', digits: '0', place: 'model' }), F('stroke', 'ストローク', 'number', { unit: 'mm', digits: '0', place: 'model' })] }
   ];
 
   /** 個体の共通項目（分類によらず持つ）。表・フォーム・詳細の並び順の元 */
@@ -130,5 +130,53 @@
     active: { label: '使用中' },
     stored: { label: '保管中' },
     retired: { label: '廃棄' }
+  };
+})();
+
+/* ── 共通項目（どの分類にもある項目） ──
+   分類ごとに「使う／使わない」と表示名を変えられる。値の型と、値を決める場所は固定。
+   分類の項目（利用者が足す項目）と同じ表に並べ、何が共通かを覚えなくて済むようにする。 */
+(function () {
+  'use strict';
+  const KK = window.KK;
+
+  /** 値を決める場所：model＝型式で決める（機器で上書き可）／asset＝機器ごと */
+  KK.PLACES = {
+    model: { label: '型式で決める', hint: '型式の画面で入れ、その型式の機器に引き継ぐ（機器で上書き可）' },
+    asset: { label: '機器ごと', hint: '機器ごとに入れる（型式の画面には出ない）' }
+  };
+
+  KK.builtinFields = KK.createRegistry('builtinFields');
+  [
+    { id: 'mgmtNo', label: '管理番号', type: '番号', place: 'asset' },
+    { id: 'serial', label: '製造番号', type: '番号', place: 'asset' },
+    { id: 'model', label: '型式', type: '型式の台帳から選ぶ', place: 'asset' },
+    { id: 'maker', label: 'メーカー', type: '会社の台帳から選ぶ', place: 'model' },
+    { id: 'range', label: '測定範囲', type: '下限〜上限', place: 'model' },
+    { id: 'unit', label: '測定値の単位', type: '単位', place: 'model' },
+    { id: 'resolution', label: '最小表示量', type: '数値（表示桁）', place: 'model' },
+    { id: 'calType', label: '校正区分', type: '社内／外部', place: 'asset' },
+    { id: 'calibrator', label: '校正会社', type: '会社の台帳から選ぶ', place: 'asset' }
+  ].forEach((f, i) => KK.builtinFields.register({ ...f, order: i }));
+
+  /** 分類での共通項目の設定 { use, label, locked } */
+  KK.builtin = function (cat, id) {
+    const def = KK.builtinFields.get(id);
+    const own = cat?.builtins?.[id] || {};
+    const idKey = KK.identityKeys.get(cat?.identityKey);
+    const locked = idKey?.required.includes(id) ? `見分け方（${idKey.label}）に使うため外せません` : '';
+    return { use: locked ? true : own.use !== false, label: own.label || def.label, locked, def };
+  };
+  KK.useField = (cat, id) => KK.builtin(cat, id).use;
+  KK.fieldLabel = (cat, id) => KK.builtin(cat, id).label;
+
+  /** 項目名の重なり：共通項目（元の名前・付け替えた名前）と、ほかの分類の項目 */
+  KK.fieldNameConflict = function (cat, label, selfIndex) {
+    const n = KK.util.norm(String(label || '').trim());
+    if (!n) return '';
+    const hit = KK.builtinFields.list().find((b) => KK.util.norm(b.label) === n || KK.util.norm(KK.fieldLabel(cat, b.id)) === n);
+    if (hit) return `「${label}」は共通項目（${KK.fieldLabel(cat, hit.id)}）にあります。共通項目の行を使ってください`;
+    const dup = (cat.fields || []).findIndex((f, i) => i !== selfIndex && KK.util.norm(f.label) === n);
+    return dup >= 0 ? `「${label}」は既にこの分類の項目にあります` : '';
   };
 })();

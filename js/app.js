@@ -92,6 +92,7 @@
     });
     KK.bus.on('data:changed', renderCta);
     if (migrated.length) KK.toast(`データを新しい形に移し替えました：${migrated.join('／')}`, { kind: 'info' });
+    KK.migrate.notes.splice(0).forEach((n) => KK.toast(n, { kind: 'info' }));
     if (window.__iconLoadFailed) KK.toast('アイコンを読み込めませんでした（ネット未接続の可能性）。操作には影響しません', { kind: 'info' });
     document.body.classList.add('is-ready');
   }

@@ -63,25 +63,28 @@
     const r = I.range(inh); const res = I.resolution(inh); const un = I.unit(inh);
     const external = I.calType(own).value === 'external';
     const unitLabel = KK.units.label(I.unit(own).value);
-    return `
-        <div class="field span-4"><label>型式 <span class="sub">（型番・名称。一覧にない型番はその場で登録できます）</span></label>
+    const use = (id) => KK.useField(cat, id);
+    const L = (id) => esc(KK.fieldLabel(cat, id));
+    const parts = [];
+    if (use('model')) parts.push(`<div class="field span-4"><label>${L('model')} <span class="sub">（型番・名称。一覧にない型番はその場で登録できます）</span></label>
           ${KK.combo.html({ name: 'model', field: 'modelId', id: v.modelId, label: I.modelLabel(model), placeholder: '型番で探す（空欄可）' })}
-          ${!model && v.model ? `<span class="hint">旧い記述：${esc(v.model)}</span>` : ''}</div>
-        <div class="field span-2"><label>メーカー</label>
-          ${KK.combo.html({ name: 'maker', field: 'makerId', id: v.makerId, label: I.companyName(v.makerId), placeholder: fromText(mk, I.companyName(mk.value)) || '会社名で探す' })}</div>
-        <div class="field span-2"><label>測定範囲</label><div class="range-row">
+          ${!model && v.model ? `<span class="hint">旧い記述：${esc(v.model)}</span>` : ''}</div>`);
+    if (use('maker')) parts.push(`<div class="field span-2"><label>${L('maker')}</label>
+          ${KK.combo.html({ name: 'maker', field: 'makerId', id: v.makerId, label: I.companyName(v.makerId), placeholder: fromText(mk, I.companyName(mk.value)) || '会社名で探す' })}</div>`);
+    if (use('range')) parts.push(`<div class="field span-2"><label>${L('range')}</label><div class="range-row">
           <input class="input" data-field="rangeMin" inputmode="decimal" value="${esc(v.range?.min ?? '')}" placeholder="${esc(r.value?.min ?? '下限')}" data-next><span>〜</span>
           <input class="input" data-field="rangeMax" inputmode="decimal" value="${esc(v.range?.max ?? '')}" placeholder="${esc(r.value?.max ?? '上限')}" data-next><span class="unit">${esc(unitLabel === KK.units.NONE_LABEL ? '' : unitLabel)}</span></div>
-          <span class="hint">${r.value ? `空欄なら${I.SOURCE[r.source]}の値（${esc(I.rangeText(inh))}）` : '例：0〜25、0.01〜0.5'}</span></div>
-        <div class="field span-2"><label>測定値の単位</label><select class="input" data-field="unit" data-next>${KK.units.options(v.unit ?? null, { inherit: `${I.SOURCE[un.source]}に従う（${KK.units.label(un.value)}）` })}</select></div>
-        <div class="field span-2"><label>最小表示量</label><input class="input" data-field="resolution" inputmode="decimal" value="${esc(v.resolution || '')}" placeholder="${esc(res.value || '0.001')}" data-next>
-          <span class="hint" data-res-sample>${resSample(v)}${res.value ? `（空欄なら${I.SOURCE[res.source]}の ${esc(res.value)}）` : ''}</span></div>
-        <div class="field span-2"><label>校正区分</label><select class="input" data-field="calType" data-next>
+          <span class="hint">${r.value ? `空欄なら${I.SOURCE[r.source]}の値（${esc(I.rangeText(inh))}）` : '例：0〜25、0.01〜0.5'}</span></div>`);
+    if (use('unit')) parts.push(`<div class="field span-2"><label>${L('unit')}</label><select class="input" data-field="unit" data-next>${KK.units.options(v.unit ?? null, { inherit: `${I.SOURCE[un.source]}に従う（${KK.units.label(un.value)}）` })}</select></div>`);
+    if (use('resolution')) parts.push(`<div class="field span-2"><label>${L('resolution')}</label><input class="input" data-field="resolution" inputmode="decimal" value="${esc(v.resolution || '')}" placeholder="${esc(res.value || '0.001')}" data-next>
+          <span class="hint" data-res-sample>${resSample(v)}${res.value ? `（空欄なら${I.SOURCE[res.source]}の ${esc(res.value)}）` : ''}</span></div>`);
+    if (use('calType')) parts.push(`<div class="field span-2"><label>${L('calType')}</label><select class="input" data-field="calType" data-next>
           <option value="">引き継ぐ（${I.SOURCE[ct.source]}：${KK.calTypes[ct.value].label}）</option>
-          ${Object.entries(KK.calTypes).map(([k, t]) => `<option value="${k}"${v.calType === k ? ' selected' : ''}>${t.label}</option>`).join('')}</select></div>
-        <div class="field span-4"><label>校正会社 ${external ? '' : '<span class="sub">（社内校正のため不要）</span>'}</label>
+          ${Object.entries(KK.calTypes).map(([k, t]) => `<option value="${k}"${v.calType === k ? ' selected' : ''}>${t.label}</option>`).join('')}</select></div>`);
+    if (use('calibrator')) parts.push(`<div class="field span-4"><label>${L('calibrator')} ${external ? '' : '<span class="sub">（社内校正のため不要）</span>'}</label>
           ${KK.combo.html({ name: 'calibrator', field: 'calibratorId', id: v.calibratorId, label: I.companyName(v.calibratorId), disabled: !external,
-            placeholder: external ? (fromText(cal, I.companyName(cal.value)) || '会社名で探す') : '社内校正' })}</div>`;
+            placeholder: external ? (fromText(cal, I.companyName(cal.value)) || '会社名で探す') : '社内校正' })}</div>`);
+    return parts.join('');
   }
 
   // ── フォーム本体 ──
@@ -98,8 +101,8 @@
         <div class="field span-3"><label>設置先<span class="req">*</span></label>
           <select class="input" data-field="locationId" data-next ${parent ? 'disabled' : ''}>${locationOptions(parent ? parent.locationId : v.locationId)}</select>
           ${parent ? '<span class="hint">親と一緒に置く（親の設置先に合わせます）</span>' : '<span class="hint">ライン・課のどの階層にも置けます</span>'}</div>
-        <div class="field span-2"><label>管理番号${req('mgmtNo')}</label><input class="input" data-field="mgmtNo" value="${esc(v.mgmtNo)}" data-next></div>
-        <div class="field span-2"><label>製造番号${req('serial')}</label><input class="input" data-field="serial" value="${esc(v.serial)}" data-next></div>
+        ${KK.useField(cat, 'mgmtNo') ? `<div class="field span-2"><label>${esc(KK.fieldLabel(cat, 'mgmtNo'))}${req('mgmtNo')}</label><input class="input" data-field="mgmtNo" value="${esc(v.mgmtNo)}" data-next></div>` : ''}
+        ${KK.useField(cat, 'serial') ? `<div class="field span-2"><label>${esc(KK.fieldLabel(cat, 'serial'))}${req('serial')}</label><input class="input" data-field="serial" value="${esc(v.serial)}" data-next></div>` : ''}
         <div class="field span-2"><label>親（構成）</label><select class="input" data-field="parentId" data-next>${parentOptions(parent ? parent.locationId : v.locationId, v.parentId, ctx.id)}</select></div>
         ${modelSectionHtml(v, cat)}
         <div class="field span-3"><label>前回校正日</label>${KK.dateInputHtml('lastCalDate', v.lastCalDate)}
@@ -141,7 +144,8 @@
       if (el) props[fd.key] = KK.fieldTypes.get(fd.type)?.read(el) ?? el.value;
     });
     v.props = props;
-    v.range = { min: v.rangeMin ?? '', max: v.rangeMax ?? '', unit: null };
+    // 使わない項目は送らない（undefined なら保存時に元の値を保つ）
+    if ('rangeMin' in v) v.range = { min: v.rangeMin ?? '', max: v.rangeMax ?? '', unit: null };
     delete v.rangeMin; delete v.rangeMax;
     // 外部校正では標準器を記録しない
     v.calStandards = I.calType(ctxAsset(v)).value === 'external' ? [] : ctx.std.selected.slice();

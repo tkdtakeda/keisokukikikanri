@@ -35,22 +35,30 @@
           <button type="button" class="btn btn--ghost btn--icon" data-open-units title="単位の選択肢を編集"><i class="fa-solid fa-pen-to-square"></i></button></div></div>
         <div class="field span-3"><label>最小表示量（既定）</label><input class="input" data-c="resolution" inputmode="decimal" value="${esc(c.resolution || '')}" placeholder="0.001">
           <span class="hint">${c.resolution ? `表示桁：小数 ${KK.num.digitsOf(c.resolution)} 桁（1 → ${esc(KK.num.format('1', KK.num.digitsOf(c.resolution)).text)}）。機器ごとに上書きできます` : '校正の値をこの桁でそろえて表示・記録します'}</span></div>
-        <div class="form-sep">項目（この分類の個体が持つ情報）</div>
+        <div class="form-sep">項目（この分類の機器が持つ情報）<span class="sub">　<i class="fa-solid fa-lock"></i> は共通項目（型が決まっていて削除できない。使う／使わない・表示名は変えられる）</span></div>
         <div class="span-6">
-          <table class="mini-grid"><thead><tr><th>項目名</th><th>型</th><th>単位・選択肢</th><th>桁</th><th>必須</th><th></th></tr></thead><tbody>
-          ${(c.fields || []).map((f, i) => `<tr data-fi="${i}">
-            <td><input class="input" data-f="label" value="${esc(f.label)}"></td>
+          <table class="mini-grid field-table"><colgroup><col style="width:44px"><col style="width:22%"><col style="width:14%"><col style="width:14%"><col style="width:13%"><col style="width:15%"><col style="width:44px"><col style="width:96px"></colgroup><thead><tr><th class="center">使う</th><th>項目名</th><th>型</th><th>単位・選択肢</th><th>桁</th><th>値を決める場所</th><th class="center">必須</th><th></th></tr></thead><tbody>
+          ${KK.builtinFields.list().map((b) => { const st = KK.builtin(c, b.id); return `<tr class="is-builtin${st.use ? '' : ' is-off'}" data-bi="${b.id}">
+            <td class="center"><input type="checkbox" data-b="use" ${st.use ? 'checked' : ''} ${st.locked ? 'disabled' : ''} title="${esc(st.locked || '使わない項目は、登録の窓・型式・詳細から消えます')}"></td>
+            <td><div class="unit-input"><i class="fa-solid fa-lock sub" title="共通項目"></i><input class="input" data-b="label" value="${esc(c.builtins?.[b.id]?.label || '')}" placeholder="${esc(b.label)}" title="空欄なら「${esc(b.label)}」"></div></td>
+            <td colspan="3"><span class="sub">${esc(b.type)}</span></td>
+            <td><span class="sub" title="${esc(KK.PLACES[b.place].hint)}">${b.place === 'model' ? '型式で決める' : '機器ごと'}</span></td>
+            <td class="center">${st.locked ? '<i class="fa-solid fa-circle-check sub" title="見分け方に使うため必須"></i>' : ''}</td><td>${st.locked ? `<span class="sub" title="${esc(st.locked)}"><i class="fa-solid fa-circle-info"></i></span>` : ''}</td></tr>`; }).join('')}
+          ${(c.fields || []).map((f, i) => { const conflict = KK.fieldNameConflict(c, f.label, i); return `<tr data-fi="${i}" class="${conflict ? 'is-conflict' : ''}">
+            <td class="center"><i class="fa-solid fa-check sub"></i></td>
+            <td><input class="input${conflict ? ' is-invalid' : ''}" data-f="label" value="${esc(f.label)}" placeholder="項目名">${conflict ? `<div class="field-error"><i class="fa-solid fa-circle-exclamation"></i>${esc(conflict)}</div>` : ''}</td>
             <td><select class="input" data-f="type">${types.map((t) => `<option value="${t.id}"${t.id === f.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select></td>
             <td>${f.type === 'number' ? `<select class="input" data-f="unit">${KK.units.options(f.unit || '')}</select>`
               : f.type === 'select' ? `<input class="input" data-f="options" value="${esc((f.options || []).join('、'))}" placeholder="「、」で区切る">` : '<span class="sub">—</span>'}</td>
             <td>${f.type === 'number' ? `<select class="input" data-f="digits" title="入力どおり：打った桁で表示／機器の表示桁：機器の最小表示量にそろえる">${KK.num.fieldDigitOptions(f.digits)}</select>` : '<span class="sub">—</span>'}</td>
+            <td><select class="input" data-f="place" title="${esc(KK.PLACES[f.place || 'asset'].hint)}">${Object.entries(KK.PLACES).map(([k, p]) => `<option value="${k}"${(f.place || 'asset') === k ? ' selected' : ''}>${p.label}</option>`).join('')}</select></td>
             <td class="center"><input type="checkbox" data-f="required" ${f.required ? 'checked' : ''}></td>
             <td class="nowrap"><button class="btn btn--ghost btn--icon" data-fmove="-1" title="上へ" ${i === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-up"></i></button>
               <button class="btn btn--ghost btn--icon" data-fmove="1" title="下へ" ${i === c.fields.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-down"></i></button>
-              <button class="btn btn--ghost btn--icon" data-fdel title="項目を外す"><i class="fa-solid fa-xmark"></i></button></td></tr>`).join('')}
+              <button class="btn btn--ghost btn--icon" data-fdel title="項目を外す"><i class="fa-solid fa-xmark"></i></button></td></tr>`; }).join('')}
           </tbody></table>
           <button class="btn btn--ghost" data-fadd><i class="fa-solid fa-plus"></i>項目を追加</button>
-          <div class="hint">項目を外しても、登録済みの値は個体に残ります（項目を戻すと再び表示されます）</div>
+          <div class="hint">「型式で決める」項目は型式の画面で入れ、その型式の機器に引き継ぎます（例：器差許容値）。「機器ごと」は 1 台ずつ入れます（例：検査成績書番号）。項目を外しても、登録済みの値は機器に残ります。</div>
         </div>
       </div>
       <div class="editor-foot">
@@ -64,6 +72,14 @@
   function readCatForm() {
     const root = catWin.querySelector('[data-cat-form]'); if (!root) return;
     root.querySelectorAll('[data-c]').forEach((el) => { editing[el.dataset.c] = el.value; });
+    editing.builtins = { ...(editing.builtins || {}) };
+    root.querySelectorAll('[data-bi]').forEach((tr) => {
+      const id = tr.dataset.bi; const cur = { ...(editing.builtins[id] || {}) };
+      const use = tr.querySelector('[data-b="use"]'); const label = tr.querySelector('[data-b="label"]');
+      if (!use.disabled) cur.use = use.checked;
+      cur.label = label.value.trim();
+      editing.builtins[id] = cur;
+    });
     root.querySelectorAll('[data-fi]').forEach((tr) => {
       const f = editing.fields[Number(tr.dataset.fi)];
       tr.querySelectorAll('[data-f]').forEach((el) => {
@@ -98,7 +114,9 @@
     const res = KK.num.clean(editing.resolution || '');
     if (res === null || (res !== '' && !(Number(res) > 0))) { KK.toast('最小表示量は 0.001 のような正の数で入力してください', { kind: 'warn' }); return; }
     editing.resolution = res;
-    const fields = editing.fields.filter((f) => (f.label || '').trim()).map((f) => ({ ...f, label: f.label.trim() }));
+    const fields = editing.fields.filter((f) => (f.label || '').trim()).map((f) => ({ ...f, label: f.label.trim(), place: f.place || 'asset' }));
+    const clash = fields.map((f, i) => KK.fieldNameConflict({ ...editing, fields }, f.label, i)).find(Boolean);
+    if (clash) { KK.toast(clash, { kind: 'warn' }); renderCat(); return; }
     const before = KK.repo.categories.get(editing.id);
     const saved = { ...editing, name, intervalMonths: iv, fields, sample: false };
     await KK.repo.categories.save(saved);
@@ -110,7 +128,7 @@
   }
 
   function openCategories(selectId) {
-    catWin = KK.floating({ id: 'catWin', title: '分類と項目', icon: 'fa-shapes', width: 860,
+    catWin = KK.floating({ id: 'catWin', title: '分類と項目', icon: 'fa-shapes', width: 1080,
       body: '<div class="master"><nav class="mlist"></nav><div class="meditor"></div></div>', onClose: () => { catWin = null; editing = null; } });
     selectCat(selectId || KK.repo.categories.list()[0]?.id);
     catWin.addEventListener('click', async (e) => {
@@ -122,7 +140,7 @@
         renderCat(); catWin.querySelector('[data-c="name"]').select(); return;
       }
       if (!editing) return;
-      if (t.closest('[data-fadd]')) { readCatForm(); editing.fields.push({ key: uid('p'), label: '', type: 'text', unit: '', digits: '' }); renderCat(); catWin.querySelector('[data-fi]:last-child [data-f="label"]')?.focus(); }
+      if (t.closest('[data-fadd]')) { readCatForm(); editing.fields.push({ key: uid('p'), label: '', type: 'text', unit: '', digits: '', place: 'asset' }); renderCat(); catWin.querySelector('[data-fi]:last-child [data-f="label"]')?.focus(); }
       else if (t.closest('[data-fdel]')) { readCatForm(); editing.fields.splice(Number(t.closest('[data-fi]').dataset.fi), 1); renderCat(); }
       else if (t.closest('[data-fmove]')) {
         readCatForm(); const i = Number(t.closest('[data-fi]').dataset.fi); const j = i + Number(t.closest('[data-fmove]').dataset.fmove);
@@ -136,7 +154,20 @@
         KK.toast(`分類「${before.name}」を削除しました`, { kind: 'warn', undo: () => KK.repo.categories.save(before) });
       }
     });
-    catWin.addEventListener('change', (e) => { if (e.target.dataset.f === 'type' || e.target.dataset.c === 'resolution') { readCatForm(); renderCat(); } });
+    // 描き直すと押そうとしたボタンが消えるので、型・識別キー・最小表示量のときだけ描き直す
+    catWin.addEventListener('change', (e) => {
+      if (e.target.dataset.f === 'type' || e.target.dataset.c === 'resolution' || e.target.dataset.c === 'identityKey') { readCatForm(); renderCat(); return; }
+      if (e.target.dataset.b === 'use') e.target.closest('tr').classList.toggle('is-off', !e.target.checked);
+    });
+    // 項目名：打つたびに、共通項目・ほかの項目との重なりをその行だけで知らせる
+    catWin.addEventListener('input', (e) => {
+      if (e.target.dataset.f !== 'label') return;
+      const tr = e.target.closest('[data-fi]'); readCatForm();
+      const msg = KK.fieldNameConflict(editing, e.target.value, Number(tr.dataset.fi));
+      tr.classList.toggle('is-conflict', !!msg); e.target.classList.toggle('is-invalid', !!msg);
+      tr.querySelector('.field-error')?.remove();
+      if (msg) e.target.insertAdjacentHTML('afterend', `<div class="field-error"><i class="fa-solid fa-circle-exclamation"></i>${esc(msg)}</div>`);
+    });
     catWin.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); saveCat(); } });
     KK.wireFormAssist(catWin);
   }

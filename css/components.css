@@ -295,3 +295,14 @@ table.grid { border-collapse: separate; border-spacing: 0; width: max-content; m
 .contact-list i:first-child { margin-left: 0; }
 .mlist__item > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mlist__item > .sub { margin-left: var(--space-2); flex-shrink: 0; }
+
+/* ── 分類の項目の表（共通項目と分類の項目を 1 つに） ── */
+.field-table tr.is-builtin td { background: var(--color-bg); }
+.field-table tr.is-builtin .unit-input i { width: 14px; }
+.field-table tr.is-off td:not(:first-child) { opacity: .45; }
+.field-table tr.is-conflict td { background: var(--color-danger-soft); }
+.field-table .field-error { margin-top: 2px; white-space: normal; }
+.field-table { table-layout: fixed; }
+.field-table th { white-space: nowrap; }
+.field-table td > .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.field-table .unit-input .input { min-width: 0; }

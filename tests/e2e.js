@@ -368,6 +368,60 @@ const check = (name, ok, info = '') => { results.push({ name, ok: !!ok, info });
   check('文字の測定範囲の項目を外し、分類に校正区分の既定を入れる', m3.fields === 0 && m3.calType === 'internal');
   await KK(async () => { const K = window.KK; const ids = ['o1', 'o2', 'o3', 'o4']; await K.repo.commit([...ids.map((id) => K.repo.del('assets', id)), K.repo.del('categories', 'old2')], 'test'); });
 
+  // ── 共通項目と分類の項目を 1 つの表で ──
+  await page.click('.rail__btn[data-panel="master"]'); await page.click('[data-open-cat]');
+  await page.waitForSelector('#catWin');
+  await page.click('[data-cat="cat-caliper"]');
+  check('共通項目が分類の項目と同じ表に並ぶ', await page.locator('#catWin tr.is-builtin').count() === 9);
+  check('見分け方に使う番号は外せず理由が出る', await page.locator('[data-bi="mgmtNo"] [data-b="use"]').isDisabled() && (await page.locator('[data-bi="mgmtNo"] [data-b="use"]').getAttribute('title')).includes('外せません'));
+  await page.click('[data-fadd]');
+  await page.locator('[data-fi]:last-child [data-f="label"]').fill('製造番号');
+  check('共通項目と同じ名前の項目はその場で知らせる', (await page.locator('[data-fi]:last-child .field-error').textContent()).includes('共通項目'));
+  await page.click('[data-save-cat]'); await page.waitForTimeout(150);
+  check('重なる名前のままでは保存できない', (await toastText()).includes('共通項目') && await KK(() => !window.KK.repo.categories.get('cat-caliper').fields.some((f) => f.label === '製造番号')));
+  await page.click('[data-fi]:last-child [data-fdel]');
+  // 測定範囲を使わない → 登録の窓・詳細から消える。値は消えない
+  const n001 = await KK(() => window.KK.repo.assets.list().find((a) => a.mgmtNo === 'N-001').id);
+  const rBefore = await KK((id) => window.KK.inherit.rangeText(window.KK.repo.assets.get(id)), n001);
+  await page.uncheck('[data-bi="range"] [data-b="use"]');
+  await page.fill('[data-bi="resolution"] [data-b="label"]', '分解能');
+  await page.click('[data-save-cat]'); await page.waitForTimeout(200);
+  await page.keyboard.press('Escape'); await page.click('.rail__btn[data-panel="master"]');
+  await KK((id) => window.KK.state.set({ selectedId: id }), n001); await page.waitForTimeout(300);
+  let props2 = await page.locator('.detail .props').nth(1).textContent();
+  check('使わない共通項目は詳細から消え、表示名の付け替えが効く', !props2.includes('測定範囲') && props2.includes('分解能'));
+  await page.click('[data-edit]'); await page.waitForSelector('#assetForm');
+  check('使わない共通項目は登録の窓に出ない', await page.locator('#assetForm [data-field="rangeMin"]').count() === 0 && (await page.locator('#assetForm').textContent()).includes('分解能'));
+  await page.click('[data-submit]'); await page.waitForSelector('#assetForm', { state: 'detached' });
+  await KK(async () => { const K = window.KK; const c = K.repo.categories.get('cat-caliper'); await K.repo.categories.save({ ...c, builtins: {} }); });
+  check('使わない間に保存しても、測定範囲の値は消えない', await KK((id) => window.KK.inherit.rangeText(window.KK.repo.assets.get(id)), n001) === rBefore && rBefore !== '', rBefore);
+  // 型式の画面には「型式で決める」項目だけ
+  await KK(() => window.KK.directoryUi.openModels(null, {})); await page.waitForSelector('#mdWin');
+  const gbset = await KK(() => window.KK.repo.models.list().find((m) => m.categoryId === 'cat-gbset').id);
+  await KK((id) => { document.querySelector(`[data-md="${id}"]`).click(); }, gbset); await page.waitForTimeout(100);
+  const mdText = await page.locator('#mdWin .meditor').textContent();
+  check('型式の画面には「型式で決める」項目だけが出る', mdText.includes('等級') && !mdText.includes('校正証明書番号'));
+  check('既定でブロックゲージは測定範囲を使わない', !mdText.includes('測定範囲') && await KK(() => !window.KK.useField(window.KK.repo.categories.get('cat-gb'), 'range')));
+  await page.keyboard.press('Escape');
+
+  // ── 移し替え：分類の項目に入れた「製造番号」を共通項目へ ──
+  await KK(async () => {
+    const K = window.KK; const loc = K.repo.locations.list()[0].id;
+    const base = { locationId: loc, lastCalDate: '', state: 'active', unit: null, resolution: null, modelId: null, makerId: null, calType: null, calibratorId: null, range: null, model: '', maker: '' };
+    await K.repo.commit([
+      K.repo.put('categories', { id: 'dupcat', name: '重なりテスト', kind: 'measure', calType: 'internal', intervalMonths: 12, identityKey: 'locationNo', unit: 'mm', resolution: '0.001', fields: [{ key: 'sn', label: '製造番号', type: 'text' }, { key: 'tol', label: '器差許容値', type: 'number' }] }),
+      K.repo.put('assets', { ...base, id: 'd1', categoryId: 'dupcat', mgmtNo: 'Q-1', serial: '', props: { sn: 'SN-111' } }),
+      K.repo.put('assets', { ...base, id: 'd2', categoryId: 'dupcat', mgmtNo: 'Q-2', serial: 'SN-OLD', props: { sn: 'SN-222' } })
+    ], 'test');
+    await K.repo.settings.set('schemaVersion', 3);
+  });
+  await page.reload(); await page.waitForSelector('body.is-ready'); await page.waitForTimeout(200);
+  const dupRes = await KK(() => { const K = window.KK; const c = K.repo.categories.get('dupcat'); return { fields: c.fields.map((f) => `${f.label}:${f.place}`), s1: K.repo.assets.get('d1').serial, s2: K.repo.assets.get('d2').serial, kept: K.repo.assets.get('d2').props.sn }; });
+  const notes = (await page.locator('.toast__msg').allTextContents()).join(' ');
+  check('分類の項目の「製造番号」を共通項目へ移して外す', dupRes.s1 === 'SN-111' && dupRes.fields.join() === '器差許容値:asset', JSON.stringify(dupRes));
+  check('既に製造番号がある機器は上書きせず、知らせる（元の値は残る）', dupRes.s2 === 'SN-OLD' && dupRes.kept === 'SN-222' && notes.includes('移さなかった機器'));
+  await KK(async () => { const K = window.KK; await K.repo.commit([K.repo.del('assets', 'd1'), K.repo.del('assets', 'd2'), K.repo.del('categories', 'dupcat')], 'test'); });
+
   // ── バックアップ（書き出し→読み込み） ──
   await page.click('.rail__btn[data-panel="backup"]');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-export]')]);

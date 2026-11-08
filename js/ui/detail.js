@@ -40,13 +40,16 @@
     const mk = I.maker(a); const cal = I.calibrator(a); const ct = I.calType(a); const rg = I.range(a);
     const res = R.resolution(a);
     const resTag = res.resSource === 'asset' || res.unitSource === 'asset' ? '<span class="tag">この機器で上書き</span>' : (res.resSource === 'model' ? I.tag('model') : '<span class="tag">分類の既定</span>');
+    const cat = R.category(a);
+    const use = (id) => KK.useField(cat, id);
+    const L = (id) => KK.fieldLabel(cat, id);
     return [
-      propRow('型式', m ? link('data-open-model', m.id, I.modelLabel(m)) : (a.model ? `${esc(a.model)} <span class="sub">（型式の台帳に未登録）</span>` : '')),
-      propRow('メーカー', mk.value ? link('data-open-company', mk.value, I.companyName(mk.value)) + I.tag(mk.source) : ''),
-      propRow('測定範囲', rg.value ? esc(I.rangeText(a)) + I.tag(rg.source) : ''),
-      propRow('最小表示量', R.resolutionText(a) ? `${esc(R.resolutionText(a))} ${resTag}` : ''),
-      propRow('校正区分', `<i class="fa-solid ${KK.calTypes[ct.value].icon}"></i> ${KK.calTypes[ct.value].label}${I.tag(ct.source)}`),
-      ct.value === 'external' ? propRow('校正会社', cal.value ? link('data-open-company', cal.value, I.companyName(cal.value)) + I.tag(cal.source) : '<span class="sub">未設定</span>') : ''
+      !use('model') ? '' : propRow(L('model'), m ? link('data-open-model', m.id, I.modelLabel(m)) : (a.model ? `${esc(a.model)} <span class="sub">（型式の台帳に未登録）</span>` : '')),
+      !use('maker') ? '' : propRow(L('maker'), mk.value ? link('data-open-company', mk.value, I.companyName(mk.value)) + I.tag(mk.source) : ''),
+      !use('range') ? '' : propRow(L('range'), rg.value ? esc(I.rangeText(a)) + I.tag(rg.source) : ''),
+      !use('resolution') ? '' : propRow(L('resolution'), R.resolutionText(a) ? `${esc(R.resolutionText(a))} ${resTag}` : ''),
+      !use('calType') ? '' : propRow(L('calType'), `<i class="fa-solid ${KK.calTypes[ct.value].icon}"></i> ${KK.calTypes[ct.value].label}${I.tag(ct.source)}`),
+      ct.value === 'external' && use('calibrator') ? propRow(L('calibrator'), cal.value ? link('data-open-company', cal.value, I.companyName(cal.value)) + I.tag(cal.source) : '<span class="sub">未設定</span>') : ''
     ].join('');
   }
 
@@ -104,8 +107,8 @@
           <section class="detail__section"><h4><i class="fa-solid fa-list"></i>項目</h4>
             <dl class="props">
               ${propRow('分類', `${esc(cat.name)}（${esc(R.kind(a).label)}）`)}
-              ${propRow('管理番号', esc(a.mgmtNo))}
-              ${propRow('製造番号', esc(a.serial))}
+              ${KK.useField(cat, 'mgmtNo') ? propRow(KK.fieldLabel(cat, 'mgmtNo'), esc(a.mgmtNo)) : ''}
+              ${KK.useField(cat, 'serial') ? propRow(KK.fieldLabel(cat, 'serial'), esc(a.serial)) : ''}
               ${specRows(a)}
               ${(cat.fields || []).map((f) => { const r = KK.inherit.prop(a, f.key); const html = KK.fieldTypes.get(f.type)?.format(r.value ?? '', f, a) ?? esc(r.value); return propRow(f.label, html ? html + KK.inherit.tag(r.source) : ''); }).join('')}
               ${propRow('状態', esc(KK.assetStates[a.state]?.label))}

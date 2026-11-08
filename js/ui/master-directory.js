@@ -158,7 +158,7 @@
 
   function mdListHtml() {
     const q = norm(mdQuery);
-    const groups = KK.repo.categories.list().map((c) => {
+    const groups = KK.repo.categories.list().filter((c) => KK.useField(c, 'model')).map((c) => {
       const list = KK.repo.models.forCategory(c.id).filter((m) => !q || norm(`${m.modelNo} ${m.name} ${I.companyName(m.makerId)}`).includes(q));
       return list.length ? `<div class="mlist__label">${esc(c.name)}</div>` + list.map((m) => `<button class="mlist__item" data-md="${m.id}" aria-current="${mdEdit?.id === m.id}">
           <span>${esc(I.modelLabel(m))}</span><span class="sub">${D.modelUsage(m.id)}</span></button>`).join('') : '';
@@ -174,19 +174,22 @@
     const used = KK.repo.models.get(m.id) ? D.modelUsage(m.id) : 0;
     const ctx = { categoryId: m.categoryId, resolution: m.resolution, unit: m.unit, modelId: null, props: {} };
     const unitLabel = KK.units.label(m.unit ?? cat?.unit ?? '');
+    const use = (id) => KK.useField(cat, id);
+    const L = (id) => esc(KK.fieldLabel(cat, id));
+    const modelFields = (cat?.fields || []).filter((f) => (f.place || 'asset') === 'model');
     return `
       <div class="form-grid" data-md-form>
-        <div class="field span-3"><label>分類<span class="req">*</span></label><select class="input" data-md-f="categoryId">${KK.repo.categories.list().map((c) => `<option value="${c.id}"${c.id === m.categoryId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div class="field span-3"><label>メーカー</label>${KK.combo.html({ name: 'mdMaker', field: 'makerId', id: m.makerId, label: I.companyName(m.makerId), placeholder: '会社名で探す' })}</div>
+        <div class="field span-3"><label>分類<span class="req">*</span></label><select class="input" data-md-f="categoryId">${KK.repo.categories.list().filter((c) => KK.useField(c, 'model') || c.id === m.categoryId).map((c) => `<option value="${c.id}"${c.id === m.categoryId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="field span-3">${use('maker') ? `<label>${L('maker')}</label>${KK.combo.html({ name: 'mdMaker', field: 'makerId', id: m.makerId, label: I.companyName(m.makerId), placeholder: '会社名で探す' })}` : ''}</div>
         <div class="field span-3"><label>型番 <span class="sub">（空欄可）</span></label><input class="input" data-md-f="modelNo" value="${esc(m.modelNo || '')}" placeholder="例：SM-25D"></div>
         <div class="field span-3"><label>名称</label><input class="input" data-md-f="name" value="${esc(m.name || '')}" placeholder="例：デジタル外側マイクロ"></div>
-        <div class="field span-2"><label>測定範囲</label><div class="range-row"><input class="input" data-md-f="rangeMin" inputmode="decimal" value="${esc(m.range?.min ?? '')}" placeholder="下限"><span>〜</span>
-          <input class="input" data-md-f="rangeMax" inputmode="decimal" value="${esc(m.range?.max ?? '')}" placeholder="上限"><span class="unit">${esc(unitLabel === KK.units.NONE_LABEL ? '' : unitLabel)}</span></div></div>
-        <div class="field span-2"><label>測定値の単位</label><select class="input" data-md-f="unit">${KK.units.options(m.unit ?? null, { inherit: `分類に従う（${KK.units.label(cat?.unit ?? '')}）` })}</select></div>
-        <div class="field span-2"><label>最小表示量</label><input class="input" data-md-f="resolution" inputmode="decimal" value="${esc(m.resolution || '')}" placeholder="${esc(cat?.resolution || '0.001')}">
-          <span class="hint">空欄なら分類の ${esc(cat?.resolution || '—')}</span></div>
-        ${(cat?.fields || []).length ? `<div class="form-sep">${esc(cat.name)} の項目（この型式の機器に引き継ぐ）</div>` : ''}
-        ${(cat?.fields || []).map((f) => `<div class="field ${f.type === 'longtext' ? 'span-6' : 'span-2'}"><label>${esc(f.label)}</label>${KK.fieldTypes.get(f.type)?.input(f, m.props?.[f.key] ?? '', ctx) || ''}</div>`).join('')}
+        ${use('range') ? `<div class="field span-2"><label>${L('range')}</label><div class="range-row"><input class="input" data-md-f="rangeMin" inputmode="decimal" value="${esc(m.range?.min ?? '')}" placeholder="下限"><span>〜</span>
+          <input class="input" data-md-f="rangeMax" inputmode="decimal" value="${esc(m.range?.max ?? '')}" placeholder="上限"><span class="unit">${esc(unitLabel === KK.units.NONE_LABEL ? '' : unitLabel)}</span></div></div>` : ''}
+        ${use('unit') ? `<div class="field span-2"><label>${L('unit')}</label><select class="input" data-md-f="unit">${KK.units.options(m.unit ?? null, { inherit: `分類に従う（${KK.units.label(cat?.unit ?? '')}）` })}</select></div>` : ''}
+        ${use('resolution') ? `<div class="field span-2"><label>${L('resolution')}</label><input class="input" data-md-f="resolution" inputmode="decimal" value="${esc(m.resolution || '')}" placeholder="${esc(cat?.resolution || '0.001')}">
+          <span class="hint">空欄なら分類の ${esc(cat?.resolution || '—')}</span></div>` : ''}
+        ${modelFields.length ? `<div class="form-sep">${esc(cat.name)} の項目（「型式で決める」項目。この型式の機器に引き継ぐ）</div>` : ''}
+        ${modelFields.map((f) => `<div class="field ${f.type === 'longtext' ? 'span-6' : 'span-2'}"><label>${esc(f.label)}</label>${KK.fieldTypes.get(f.type)?.input(f, m.props?.[f.key] ?? '', ctx) || ''}</div>`).join('')}
         <div class="field span-6"><label>備考</label><textarea class="input input--area" data-md-f="note" rows="2">${esc(m.note || '')}</textarea></div>
       </div>
       <div class="editor-foot">
@@ -201,11 +204,13 @@
     const root = mdWin.querySelector('[data-md-form]'); if (!root) return;
     const v = {}; root.querySelectorAll('[data-md-f]').forEach((el) => { v[el.dataset.mdF] = el.value.trim(); });
     mdEdit.categoryId = v.categoryId; mdEdit.modelNo = v.modelNo; mdEdit.name = v.name; mdEdit.note = v.note;
-    mdEdit.unit = v.unit === '__inherit' ? null : v.unit;
-    mdEdit.resolution = KK.num.clean(v.resolution) || (v.resolution ? v.resolution : null);
-    const mn = KK.num.clean(v.rangeMin) ?? v.rangeMin, mx = KK.num.clean(v.rangeMax) ?? v.rangeMax;
-    mdEdit.range = mn || mx ? { min: mn || '', max: mx || '', unit: null } : null;
-    mdEdit.makerId = root.querySelector('[data-field="makerId"]')?.value || null;
+    if ('unit' in v) mdEdit.unit = v.unit === '__inherit' ? null : v.unit;
+    if ('resolution' in v) mdEdit.resolution = KK.num.clean(v.resolution) || (v.resolution ? v.resolution : null);
+    if ('rangeMin' in v) {
+      const mn = KK.num.clean(v.rangeMin) ?? v.rangeMin, mx = KK.num.clean(v.rangeMax) ?? v.rangeMax;
+      mdEdit.range = mn || mx ? { min: mn || '', max: mx || '', unit: null } : null;
+    }
+    const mk = root.querySelector('[data-field="makerId"]'); if (mk) mdEdit.makerId = mk.value || null;
     const cat = KK.repo.categories.get(mdEdit.categoryId); const props = {};
     (cat?.fields || []).forEach((f) => { const el = root.querySelector(`[data-prop="${CSS.escape(f.key)}"]`); if (el) props[f.key] = KK.fieldTypes.get(f.type)?.read(el) ?? el.value; });
     mdEdit.props = { ...(mdEdit.props || {}), ...props };

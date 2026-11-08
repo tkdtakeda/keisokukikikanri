@@ -96,10 +96,47 @@
         if (ops.length) await repo.commit(ops, 'migrate');
         return ops.length;
       }
+    },
+    {
+      version: 4,
+      label: '分類の項目に「値を決める場所」を付け、共通項目と重なる項目を片付ける',
+      async run() {
+        const repo = KK.repo; const U = KK.util;
+        const ops = []; const notes = [];
+        const assetPatch = new Map(); // id → 変更後
+        repo.categories.list().forEach((c) => {
+          const def = KK.defaultCategories.find((d) => d.id === c.id);
+          let fields = (c.fields || []).map((f) => (f.place ? f : { ...f, place: def?.fields.find((x) => x.key === f.key)?.place || 'asset' }));
+          // 共通項目と同じ名前の項目：管理番号・製造番号は値を共通項目へ移して外す
+          ['mgmtNo', 'serial'].forEach((bid) => {
+            const name = KK.builtinFields.get(bid).label;
+            const dup = fields.find((f) => U.norm(f.label) === U.norm(name));
+            if (!dup) return;
+            const kept = [];
+            repo.assets.list().filter((a) => a.categoryId === c.id).forEach((a) => {
+              const cur = assetPatch.get(a.id) || a;
+              const v = String(cur.props?.[dup.key] ?? '').trim();
+              if (!v) return;
+              if (!cur[bid]) assetPatch.set(a.id, { ...cur, [bid]: v });
+              else if (U.norm(cur[bid]) !== U.norm(v)) kept.push(`${KK.rules.identity(cur)}（${v}）`);
+            });
+            fields = fields.filter((f) => f !== dup);
+            notes.push(`「${c.name}」の項目「${dup.label}」を共通項目の${name}にまとめました` +
+              (kept.length ? `。既に${name}があり移さなかった機器：${kept.slice(0, 5).join('、')}${kept.length > 5 ? ` ほか ${kept.length - 5} 台` : ''}（元の値は機器に残っています）` : ''));
+          });
+          const builtins = c.builtins || (def?.builtins ? JSON.parse(JSON.stringify(def.builtins)) : {});
+          ops.push(repo.put('categories', { ...c, fields, builtins }));
+        });
+        assetPatch.forEach((a) => ops.push(repo.put('assets', a)));
+        if (ops.length) await repo.commit(ops, 'migrate');
+        KK.migrate.notes.push(...notes);
+        return notes.length;
+      }
     }
   ];
 
   KK.migrate = {
+    notes: [], // 移し替えで利用者に知らせること
     async run() {
       const cur = KK.repo.settings.get('schemaVersion', 1);
       const done = [];
