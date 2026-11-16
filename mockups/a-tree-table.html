@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja" data-density="standard">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案A 一枚表（ツリー表）｜測定機器台帳 レイアウト案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="common/mock-tokens.css">
+<link rel="stylesheet" href="common/mock-base.css">
+</head>
+<body>
+<!-- 仮説：Excel の台帳に慣れた人は、全件を 1 枚の表で一望できると迷わない。親子は行の展開で見せる。 -->
+<div class="app">
+  <header class="topbar">
+    <div class="topbar__title"><i class="fa-solid fa-ruler-combined"></i>測定機器台帳</div>
+    <label class="search"><i class="fa-solid fa-magnifying-glass"></i><input class="input" id="q" placeholder="管理番号・製造番号・型式で探す"></label>
+    <div class="topbar__spacer"></div>
+    <span class="topbar__mock">案A 一枚表</span>
+    <button class="btn btn--primary" data-open-register><i class="fa-solid fa-plus"></i>個体を登録する</button>
+  </header>
+  <nav class="rail" id="rail"></nav>
+  <aside class="sidepanel" id="panel"><div class="sidepanel__inner"></div></aside>
+  <main class="main" style="flex-direction:row">
+    <div class="main" style="flex:1">
+      <div class="toolbar">
+        <span class="toolbar__summary" id="summary"></span>
+        <div class="topbar__spacer"></div>
+        <button class="btn btn--ghost" id="expandAll"><i class="fa-solid fa-angles-down"></i>構成をすべて開く</button>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>状態</th><th>番号</th><th>分類</th><th>型式・仕様</th><th>製造番号</th><th>設置先</th><th>前回校正</th><th>次回期限</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <aside class="drawer" id="drawer"></aside>
+  </main>
+</div>
+<div class="mock-note">レイアウト案のモック（データは固定）。行をクリックで詳細、▶ で構成を開閉。</div>
+
+<script src="common/mock-data.js"></script>
+<script src="common/mock-util.js"></script>
+<script>
+(function () {
+  'use strict';
+  const D = window.MockData, U = window.MockUtil;
+  const open = new Set(['A20', 'A40']);
+  let selected = null;
+
+  document.getElementById('rail').innerHTML = U.railHtml();
+  U.wireRail(document.getElementById('panel'), U.panelContents());
+  U.mountRegisterForm();
+
+  const visibleRoots = () => U.roots().filter((a) => a.state !== '廃棄')
+    .sort((a, b) => U.rollupStatus(b).rank - U.rollupStatus(a).rank || U.dueDate(a).localeCompare(U.dueDate(b)));
+
+  function row(a, depth) {
+    const kids = U.children(a.id);
+    const s = depth === 0 ? U.rollupStatus(a) : U.status(a);
+    const toggle = kids.length ? `<span class="tree-toggle" data-toggle="${a.id}"><i class="fa-solid fa-caret-${open.has(a.id) ? 'down' : 'right'}"></i></span>` : '<span class="tree-toggle"></span>';
+    const tr = `<tr data-id="${a.id}" class="${a.id === selected ? 'is-selected' : ''}">
+      <td>${U.badge(s)}</td>
+      <td><span class="tree-indent" style="width:${depth * 18}px"></span>${toggle}<b>${U.esc(U.identity(a))}</b>${kids.length ? ` <span class="sub">（${kids.length}）</span>` : ''}</td>
+      <td>${U.kindHtml(a)} ${U.esc(U.cat(a).name)}</td>
+      <td>${U.esc(a.model)}</td>
+      <td class="mono">${U.esc(a.serial) || '<span class="sub">—</span>'}</td>
+      <td>${U.esc(U.locPath(a.loc))}</td>
+      <td class="mono">${a.lastCal}</td>
+      <td class="mono">${U.dueDate(a)}</td></tr>`;
+    return tr + (open.has(a.id) ? kids.map((k) => row(k, depth + 1)).join('') : '');
+  }
+
+  function render() {
+    const roots = visibleRoots();
+    document.getElementById('rows').innerHTML = roots.map((a) => row(a, 0)).join('');
+    const c = U.counts(D.assets.filter((a) => a.state !== '廃棄'));
+    document.getElementById('summary').innerHTML = `<b>${roots.length}</b> 件（構成の子を含め ${D.assets.filter((a) => a.state !== '廃棄').length} 個体）　${U.countBadges(c)}`;
+  }
+
+  document.getElementById('rows').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-toggle]');
+    if (t) { const id = t.dataset.toggle; open.has(id) ? open.delete(id) : open.add(id); render(); return; }
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    selected = tr.dataset.id; render();
+    const dr = document.getElementById('drawer');
+    dr.innerHTML = U.detailHtml(D.assets.find((a) => a.id === selected), { closable: true });
+    dr.classList.add('is-open');
+  });
+  document.getElementById('drawer').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-detail]')) { document.getElementById('drawer').classList.remove('is-open'); selected = null; render(); }
+  });
+  document.getElementById('expandAll').addEventListener('click', () => { D.assets.forEach((a) => { if (U.children(a.id).length) open.add(a.id); }); render(); });
+  render();
+})();
+</script>
+</body>
+</html>

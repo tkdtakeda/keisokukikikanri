@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja" data-density="standard">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案E 検索ファースト｜測定機器台帳 レイアウト案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="common/mock-tokens.css">
+<link rel="stylesheet" href="common/mock-base.css">
+<style>
+  .finder { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .finder__bar { padding: var(--space-5) var(--space-5) var(--space-3); background: var(--color-surface); border-bottom: 1px solid var(--color-border); transition: padding var(--motion-mid); }
+  .finder.is-idle .finder__bar { padding-top: 14vh; border-bottom: 0; }
+  .bigsearch { position: relative; display: block; max-width: 720px; margin: 0 auto; }
+  .bigsearch i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--color-text-sub); font-size: 16px; }
+  .bigsearch input { width: 100%; height: 44px; padding: 0 14px 0 42px; border: 1.5px solid var(--color-border-strong); border-radius: 22px; font-size: 16px; background: var(--color-surface); }
+  .bigsearch input:focus { border-color: var(--color-primary); outline: none; box-shadow: 0 0 0 3px var(--color-primary-soft); }
+  .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; margin-top: var(--space-3); }
+  .chip { border: 1px solid var(--color-border-strong); border-radius: 14px; padding: 2px 10px; background: var(--color-surface); cursor: pointer; font-size: var(--font-size-small); }
+  .chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .recent { max-width: 720px; margin: var(--space-4) auto 0; }
+  .recent h4 { margin: 0 0 var(--space-2); font-size: var(--font-size-small); color: var(--color-text-sub); }
+  .finder.is-idle .table-wrap { display: none; }
+  .finder:not(.is-idle) .recent { display: none; }
+  mark { background: var(--color-warn-soft); color: inherit; padding: 0 1px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<!-- 仮説：現場からの問い合わせ（「M-001 はどこ？期限は？」）に最短で答えることが最頻の仕事。入力した瞬間に候補を絞る。 -->
+<div class="app">
+  <header class="topbar">
+    <div class="topbar__title"><i class="fa-solid fa-ruler-combined"></i>測定機器台帳</div>
+    <div class="topbar__spacer"></div>
+    <span class="topbar__mock">案E 検索ファースト</span>
+    <button class="btn btn--primary" data-open-register><i class="fa-solid fa-plus"></i>個体を登録する</button>
+  </header>
+  <nav class="rail" id="rail"></nav>
+  <aside class="sidepanel" id="panel"><div class="sidepanel__inner"></div></aside>
+  <main class="main" style="flex-direction:row">
+    <div class="finder is-idle" id="finder">
+      <div class="finder__bar">
+        <label class="bigsearch"><i class="fa-solid fa-magnifying-glass"></i><input id="q" placeholder="管理番号・製造番号・型式・設置先（例：m-001、第1、ブロック）" autocomplete="off"></label>
+        <div class="chips" id="chips"></div>
+        <div class="recent" id="recent"></div>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>状態</th><th>番号</th><th>分類</th><th>型式・仕様</th><th>製造番号</th><th>設置先</th><th>次回期限</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <aside class="drawer" id="drawer"></aside>
+  </main>
+</div>
+<div class="mock-note">レイアウト案のモック（データは固定）。検索欄に入力すると即座に絞り込み。全角半角・かなの違いは同一視。</div>
+
+<script src="common/mock-data.js"></script>
+<script src="common/mock-util.js"></script>
+<script>
+(function () {
+  'use strict';
+  const D = window.MockData, U = window.MockUtil;
+  let selected = null;
+  const norm = (s) => String(s).normalize('NFKC').toLowerCase().replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+  const hay = (a) => norm([a.no, a.serial, a.model, a.maker, U.cat(a).name, U.locPath(a.loc)].join(' '));
+
+  document.getElementById('rail').innerHTML = U.railHtml();
+  U.wireRail(document.getElementById('panel'), U.panelContents());
+  U.mountRegisterForm();
+
+  document.getElementById('chips').innerHTML = ['第1加工ライン', '標準室', 'ブロックゲージ', '力計', 'ミツトヨ']
+    .map((t) => `<button class="chip">${t}</button>`).join('');
+  const recentIds = ['A01', 'A20', 'A40'];
+  document.getElementById('recent').innerHTML = '<h4><i class="fa-solid fa-clock-rotate-left"></i> 最近見た機器</h4><table class="grid"><tbody>' +
+    recentIds.map((id) => { const a = D.assets.find((x) => x.id === id); return `<tr data-id="${id}"><td>${U.badge(U.rollupStatus(a))}</td><td><b>${U.esc(U.identity(a))}</b></td><td>${U.esc(U.cat(a).name)}</td><td>${U.esc(U.locPath(a.loc))}</td></tr>`; }).join('') + '</tbody></table>';
+
+  function hl(text, q) {
+    const t = String(text ?? ''); if (!q) return U.esc(t);
+    const i = norm(t).indexOf(q); if (i < 0) return U.esc(t);
+    return U.esc(t.slice(0, i)) + '<mark>' + U.esc(t.slice(i, i + q.length)) + '</mark>' + U.esc(t.slice(i + q.length));
+  }
+
+  function render() {
+    const raw = document.getElementById('q').value.trim(); const q = norm(raw);
+    document.getElementById('finder').classList.toggle('is-idle', !q);
+    if (!q) return;
+    const terms = q.split(/\s+/);
+    const list = D.assets.filter((a) => a.state !== '廃棄' && terms.every((t) => hay(a).includes(t)));
+    document.getElementById('rows').innerHTML = list.length ? list.map((a) => `<tr data-id="${a.id}" class="${a.id === selected ? 'is-selected' : ''}">
+        <td>${U.badge(U.status(a))}</td><td><b>${hl(U.identity(a), terms[0])}</b></td>
+        <td>${U.kindHtml(a)} ${hl(U.cat(a).name, terms[0])}</td><td>${hl(a.model, terms[0])}</td>
+        <td class="mono">${hl(a.serial, terms[0]) || '<span class="sub">—</span>'}</td><td>${hl(U.locPath(a.loc), terms[0])}</td><td class="mono">${U.dueDate(a)}</td></tr>`).join('')
+      : `<tr><td colspan="7" class="empty">「${U.esc(raw)}」に一致する機器はありません。廃棄済みは絞り込みパネルで表示できます。</td></tr>`;
+  }
+
+  const openDetail = (id) => {
+    selected = id; render();
+    const dr = document.getElementById('drawer');
+    dr.innerHTML = U.detailHtml(D.assets.find((a) => a.id === id), { closable: true });
+    dr.classList.add('is-open');
+  };
+  document.getElementById('q').addEventListener('input', render);
+  document.getElementById('chips').addEventListener('click', (e) => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    document.getElementById('q').value = b.textContent; render();
+  });
+  document.getElementById('finder').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) openDetail(tr.dataset.id); });
+  document.getElementById('drawer').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-detail]')) { document.getElementById('drawer').classList.remove('is-open'); selected = null; render(); }
+  });
+  document.getElementById('q').focus();
+})();
+</script>
+</body>
+</html>

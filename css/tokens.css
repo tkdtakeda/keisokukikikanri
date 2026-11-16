@@ -1,0 +1,109 @@
+/* ── トークン ──
+   生の値はこのファイルだけに書く。部品は意味づけトークンを参照する。 */
+:root {
+  /* 基本の色：落ち着いた青を主色、グレーはわずかに青み */
+  --c-blue-50: #eef4fa;
+  --c-blue-100: #dbe7f3;
+  --c-blue-200: #b8cfe6;
+  --c-blue-500: #3d6f9e;
+  --c-blue-600: #2e5b86;
+  --c-blue-700: #24496d;
+  --c-teal-100: #d7eeec;
+  --c-teal-600: #2b7a78;      /* 類似色：標準器 */
+  --c-indigo-100: #e3e4f6;
+  --c-indigo-600: #4a4f9c;    /* 類似色：試験機器 */
+  --c-amber-100: #fbefd6;
+  --c-amber-700: #96600f;     /* 分裂補色：注意・期限間近 */
+  --c-red-100: #f8dfdc;
+  --c-red-700: #a8322a;       /* 失敗・期限切れ */
+  --c-green-100: #dcefe2;
+  --c-green-700: #2e7048;     /* 成功・正常 */
+  --c-gray-0: #ffffff;
+  --c-gray-50: #f6f8fa;
+  --c-gray-100: #edf0f4;
+  --c-gray-200: #dde2e8;
+  --c-gray-300: #c6cdd6;
+  --c-gray-500: #6b7685;
+  --c-gray-700: #3c4552;
+  --c-gray-900: #1d232b;
+
+  /* 意味づけ */
+  --color-bg: var(--c-gray-50);
+  --color-surface: var(--c-gray-0);
+  --color-surface-sub: var(--c-gray-100);
+  --color-border: var(--c-gray-200);
+  --color-border-strong: var(--c-gray-300);
+  --color-text: var(--c-gray-900);
+  --color-text-sub: var(--c-gray-500);
+  --color-text-mid: var(--c-gray-700);
+  --color-primary: var(--c-blue-600);
+  --color-primary-hover: var(--c-blue-700);
+  --color-primary-soft: var(--c-blue-50);
+  --color-primary-line: var(--c-blue-200);
+  --color-selected: var(--c-blue-100);
+  --color-on-primary: var(--c-gray-0);
+  --color-kind-measure: var(--c-blue-500);
+  --color-kind-standard: var(--c-teal-600);
+  --color-kind-standard-soft: var(--c-teal-100);
+  --color-kind-test: var(--c-indigo-600);
+  --color-kind-test-soft: var(--c-indigo-100);
+  --color-ok: var(--c-green-700);
+  --color-ok-soft: var(--c-green-100);
+  --color-warn: var(--c-amber-700);
+  --color-warn-soft: var(--c-amber-100);
+  --color-danger: var(--c-red-700);
+  --color-danger-soft: var(--c-red-100);
+  --color-focus: var(--c-blue-500);
+  /* 暗い通知の上で読める明るい色 */
+  --color-toast-ok: #7fd1a1;
+  --color-toast-warn: #f2c46d;
+  --color-toast-danger: #f19a92;
+  --color-toast-info: #9cc3ea;
+  --color-toast-hover: rgba(255, 255, 255, 0.12);
+
+  /* 形・動き */
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 10px;
+  --shadow-panel: 0 4px 16px rgba(29, 35, 43, 0.12);
+  --shadow-pop: 0 8px 28px rgba(29, 35, 43, 0.18);
+  --motion-fast: 120ms;
+  --motion-mid: 220ms;
+
+  /* 骨組み */
+  --topbar-height: 48px;
+  --rail-width: 48px;
+  --panel-width: 280px;
+  --drawer-width: 460px;
+  --locnav-width: 232px;
+  --form-width: 600px;
+
+  /* 表示密度：標準 */
+  --font-size-body: 13px;
+  --font-size-small: 11.5px;
+  --font-size-title: 15px;
+  --font-size-hero: 22px;
+  --line-height-body: 1.5;
+  --control-height: 30px;
+  --table-cell-padding-x: 10px;
+  --table-cell-padding-y: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+}
+:root[data-density="compact"] {
+  --font-size-body: 12px;
+  --font-size-small: 11px;
+  --control-height: 26px;
+  --table-cell-padding-x: 8px;
+  --table-cell-padding-y: 3px;
+}
+:root[data-density="comfortable"] {
+  --font-size-body: 14.5px;
+  --font-size-small: 12.5px;
+  --control-height: 36px;
+  --table-cell-padding-x: 12px;
+  --table-cell-padding-y: 9px;
+}

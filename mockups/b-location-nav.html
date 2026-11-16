@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja" data-density="standard">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案B 設置先ナビ｜測定機器台帳 レイアウト案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="common/mock-tokens.css">
+<link rel="stylesheet" href="common/mock-base.css">
+<style>
+  .locnav { width: 230px; flex-shrink: 0; overflow-y: auto; background: var(--color-surface); border-right: 1px solid var(--color-border); padding: var(--space-2) 0; }
+  .locnav__head { padding: 0 var(--space-3) var(--space-2); font-size: var(--font-size-small); color: var(--color-text-sub); }
+  .locnav__item { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; text-align: left; padding: 4px var(--space-3); cursor: pointer; }
+  .locnav__item:hover { background: var(--color-primary-soft); }
+  .locnav__item[aria-current="true"] { background: var(--color-selected); box-shadow: inset 3px 0 0 var(--color-primary); font-weight: 600; }
+  .locnav__item .n { margin-left: auto; color: var(--color-text-sub); font-size: var(--font-size-small); }
+  .locnav__item .x { color: var(--color-danger); font-size: var(--font-size-small); }
+  .place-head { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-2); background: var(--color-surface); }
+  .place-head h2 { margin: 0; font-size: var(--font-size-hero); }
+  .place-head .crumb { color: var(--color-text-sub); }
+</style>
+</head>
+<body>
+<!-- 仮説：校正も確認も「ライン（課）単位でまとめて」行う。置き場所から辿れば、管理番号の重複にも迷わない。 -->
+<div class="app">
+  <header class="topbar">
+    <div class="topbar__title"><i class="fa-solid fa-ruler-combined"></i>測定機器台帳</div>
+    <label class="search"><i class="fa-solid fa-magnifying-glass"></i><input class="input" placeholder="この設置先の中を探す"></label>
+    <div class="topbar__spacer"></div>
+    <span class="topbar__mock">案B 設置先ナビ</span>
+    <button class="btn btn--primary" data-open-register id="cta"></button>
+  </header>
+  <nav class="rail" id="rail"></nav>
+  <aside class="sidepanel" id="panel"><div class="sidepanel__inner"></div></aside>
+  <main class="main" style="flex-direction:row">
+    <div class="locnav" id="locnav"></div>
+    <div class="main" style="flex:1">
+      <div class="place-head"><h2 id="placeName"></h2><span class="crumb" id="crumb"></span><span id="placeCounts"></span></div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>状態</th><th>番号</th><th>分類</th><th>型式・仕様</th><th>製造番号</th><th>置き場所</th><th>次回期限</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    <aside class="drawer" id="drawer"></aside>
+  </main>
+</div>
+<div class="mock-note">レイアウト案のモック（データは固定）。左の設置先を選ぶと表が切り替わる。</div>
+
+<script src="common/mock-data.js"></script>
+<script src="common/mock-util.js"></script>
+<script>
+(function () {
+  'use strict';
+  const D = window.MockData, U = window.MockUtil;
+  let current = 'L3', selected = null;
+
+  document.getElementById('rail').innerHTML = U.railHtml();
+  U.wireRail(document.getElementById('panel'), U.panelContents());
+  U.mountRegisterForm();
+
+  const inLoc = (id) => { const ids = U.locDescendants(id); return D.assets.filter((a) => ids.includes(a.loc) && a.state !== '廃棄'); };
+
+  function renderNav() {
+    const node = (l, depth) => {
+      const list = inLoc(l.id), c = U.counts(list);
+      const kids = D.locations.filter((x) => x.parent === l.id);
+      return `<button class="locnav__item" data-loc="${l.id}" aria-current="${l.id === current}" style="padding-left:${12 + depth * 16}px">
+        <i class="fa-solid ${kids.length ? 'fa-folder-open' : 'fa-location-dot'}"></i>${U.esc(l.name)}
+        ${c.overdue ? `<span class="x" title="期限切れ"><i class="fa-solid fa-circle-exclamation"></i>${c.overdue}</span>` : ''}
+        <span class="n">${list.length}</span></button>` + kids.map((k) => node(k, depth + 1)).join('');
+    };
+    document.getElementById('locnav').innerHTML = '<div class="locnav__head">設置先（部 › 課 › ライン）</div>' +
+      D.locations.filter((l) => !l.parent).map((l) => node(l, 0)).join('');
+  }
+
+  function renderMain() {
+    const list = inLoc(current);
+    const l = U.loc(current);
+    document.getElementById('placeName').textContent = l.name;
+    document.getElementById('crumb').textContent = U.locPath(current);
+    document.getElementById('placeCounts').innerHTML = `${list.length} 個体　${U.countBadges(U.counts(list))}`;
+    document.getElementById('cta').innerHTML = `<i class="fa-solid fa-plus"></i>${U.esc(l.name)} に登録する`;
+    const tops = list.filter((a) => !a.parent || !list.some((p) => p.id === a.parent));
+    const row = (a, depth) => `<tr data-id="${a.id}" class="${a.id === selected ? 'is-selected' : ''}">
+        <td>${U.badge(depth ? U.status(a) : U.rollupStatus(a))}</td>
+        <td><span class="tree-indent" style="width:${depth * 18}px"></span>${depth ? '<i class="fa-solid fa-turn-up fa-rotate-90 sub"></i> ' : ''}<b>${U.esc(U.identity(a))}</b></td>
+        <td>${U.kindHtml(a)} ${U.esc(U.cat(a).name)}</td><td>${U.esc(a.model)}</td>
+        <td class="mono">${U.esc(a.serial) || '<span class="sub">—</span>'}</td>
+        <td>${U.esc(U.loc(a.loc).name)}</td><td class="mono">${U.dueDate(a)}</td></tr>` +
+      U.children(a.id).map((k) => row(k, depth + 1)).join('');
+    document.getElementById('rows').innerHTML = tops.length ? tops.map((a) => row(a, 0)).join('')
+      : '<tr><td colspan="7" class="empty">この設置先には、まだ機器が登録されていません。右上の「登録する」から追加できます。</td></tr>';
+  }
+
+  document.getElementById('locnav').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-loc]'); if (!b) return;
+    current = b.dataset.loc; selected = null; document.getElementById('drawer').classList.remove('is-open');
+    renderNav(); renderMain();
+  });
+  document.getElementById('rows').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    selected = tr.dataset.id; renderMain();
+    const dr = document.getElementById('drawer');
+    dr.innerHTML = U.detailHtml(D.assets.find((a) => a.id === selected), { closable: true });
+    dr.classList.add('is-open');
+  });
+  document.getElementById('drawer').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-detail]')) { document.getElementById('drawer').classList.remove('is-open'); selected = null; renderMain(); }
+  });
+  renderNav(); renderMain();
+})();
+</script>
+</body>
+</html>

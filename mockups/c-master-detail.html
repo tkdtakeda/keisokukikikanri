@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja" data-density="standard">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案C 一覧＋詳細｜測定機器台帳 レイアウト案</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="common/mock-tokens.css">
+<link rel="stylesheet" href="common/mock-base.css">
+<style>
+  .list { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; background: var(--color-surface); border-right: 1px solid var(--color-border); }
+  .list__head { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); display: flex; gap: var(--space-2); align-items: center; }
+  .list__head .input { flex: 1; }
+  .list__body { flex: 1; overflow-y: auto; }
+  .card { display: grid; grid-template-columns: 1fr auto; gap: 0 var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); cursor: pointer; }
+  .card:hover { background: var(--color-primary-soft); }
+  .card[aria-selected="true"] { background: var(--color-selected); box-shadow: inset 3px 0 0 var(--color-primary); }
+  .card__id { font-weight: 600; }
+  .card__sub { grid-column: 1 / -1; color: var(--color-text-sub); font-size: var(--font-size-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.is-child { padding-left: 30px; }
+  .pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--color-surface); }
+  .pane__body { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-5); display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); gap: var(--space-5); align-content: start; }
+  .pane__actions { display: flex; gap: var(--space-2); font-size: var(--font-size-body); font-weight: 400; }
+</style>
+</head>
+<body>
+<!-- 仮説：台帳の仕事は「1 台を見て確かめる」が中心。一覧と詳細を常に並べれば、開く・閉じるの往復が要らない。 -->
+<div class="app">
+  <header class="topbar">
+    <div class="topbar__title"><i class="fa-solid fa-ruler-combined"></i>測定機器台帳</div>
+    <div class="topbar__spacer"></div>
+    <span class="topbar__mock">案C 一覧＋詳細</span>
+    <button class="btn btn--primary" data-open-register><i class="fa-solid fa-plus"></i>個体を登録する</button>
+  </header>
+  <nav class="rail" id="rail"></nav>
+  <aside class="sidepanel" id="panel"><div class="sidepanel__inner"></div></aside>
+  <main class="main" style="flex-direction:row">
+    <section class="list">
+      <div class="list__head"><label class="search" style="flex:1"><i class="fa-solid fa-magnifying-glass"></i><input class="input" style="width:100%" placeholder="番号・型式で探す"></label></div>
+      <div class="toolbar" style="border-bottom:1px solid var(--color-border)"><span class="toolbar__summary" id="summary"></span></div>
+      <div class="list__body" id="list"></div>
+    </section>
+    <section class="pane" id="pane"></section>
+  </main>
+</div>
+<div class="mock-note">レイアウト案のモック（データは固定）。左の一覧を選ぶと右の詳細が切り替わる。↑↓キーでも移動。</div>
+
+<script src="common/mock-data.js"></script>
+<script src="common/mock-util.js"></script>
+<script>
+(function () {
+  'use strict';
+  const D = window.MockData, U = window.MockUtil;
+  let selected = 'A01';
+
+  document.getElementById('rail').innerHTML = U.railHtml();
+  U.wireRail(document.getElementById('panel'), U.panelContents());
+  U.mountRegisterForm();
+
+  const ordered = () => {
+    const roots = U.roots().filter((a) => a.state !== '廃棄')
+      .sort((a, b) => U.rollupStatus(b).rank - U.rollupStatus(a).rank || U.dueDate(a).localeCompare(U.dueDate(b)));
+    return roots.flatMap((r) => [r, ...U.descendants(r.id)]);
+  };
+
+  function renderList() {
+    const list = ordered();
+    document.getElementById('summary').innerHTML = `<b>${list.length}</b> 個体　${U.countBadges(U.counts(list))}`;
+    document.getElementById('list').innerHTML = list.map((a) => `
+      <div class="card${a.parent ? ' is-child' : ''}" data-id="${a.id}" aria-selected="${a.id === selected}" tabindex="-1">
+        <span class="card__id">${a.parent ? '<i class="fa-solid fa-turn-up fa-rotate-90 sub"></i> ' : ''}${U.esc(U.identity(a))}　<span class="sub">${U.esc(U.cat(a).name)}</span></span>
+        <span>${U.badge(a.parent ? U.status(a) : U.rollupStatus(a))}</span>
+        <span class="card__sub">${U.esc(a.model)}・${U.esc(U.loc(a.loc).name)}</span>
+      </div>`).join('');
+  }
+
+  function renderPane() {
+    const a = D.assets.find((x) => x.id === selected);
+    const top = U.topOf(a);
+    const hasTree = top.id !== a.id || U.children(a.id).length;
+    document.getElementById('pane').innerHTML = `
+      <div class="detail__head" style="padding:var(--space-3) var(--space-5)">
+        <div class="detail__title" style="font-size:var(--font-size-hero)">${U.kindHtml(a)}<span>${U.esc(U.cat(a).name)} ${U.esc(U.identity(a))}</span>${U.badge(U.status(a))}<span class="spacer"></span>
+          <span class="pane__actions"><button class="btn"><i class="fa-solid fa-pen"></i>編集</button><button class="btn"><i class="fa-solid fa-truck-arrow-right"></i>移動</button><button class="btn btn--icon" title="その他"><i class="fa-solid fa-ellipsis-vertical"></i></button></span></div>
+        <div class="detail__meta">${U.esc(a.model)}　${U.esc(U.locPath(a.loc))}</div>
+      </div>
+      <div class="pane__body">
+        <div><div class="detail__section"><h4><i class="fa-solid fa-list"></i>項目</h4>${U.propsHtml(a)}</div></div>
+        <div>
+          ${hasTree ? `<div class="detail__section"><h4><i class="fa-solid fa-sitemap"></i>構成（一緒に持ち運ぶ単位）</h4>${U.treeHtml(top.id, a.id)}</div>` : ''}
+          <div class="detail__section"><h4><i class="fa-solid fa-clock-rotate-left"></i>記録</h4>${U.historyHtml(a)}</div>
+        </div>
+      </div>`;
+  }
+
+  const select = (id) => { selected = id; renderList(); renderPane(); document.querySelector(`.card[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' }); };
+  document.getElementById('list').addEventListener('click', (e) => { const c = e.target.closest('.card'); if (c) select(c.dataset.id); });
+  document.addEventListener('keydown', (e) => {
+    if (!['ArrowDown', 'ArrowUp'].includes(e.key) || e.target.closest('input,select,.floating')) return;
+    const ids = ordered().map((a) => a.id); const i = ids.indexOf(selected);
+    const n = ids[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (n) { e.preventDefault(); select(n); }
+  });
+  renderList(); renderPane();
+})();
+</script>
+</body>
+</html>
